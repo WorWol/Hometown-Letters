@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>故乡来信 · Hometown Letters</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- 纸张纹理覆盖层 -->
+  <div class="paper-overlay"></div>
+
+  <!-- ===== 认证门控 ===== -->
+  <div id="auth-gate">
+    <div class="page active" id="page-auth"></div>
+  </div>
+
+  <div id="app">
+
+    <!-- ===== 顶栏 (Godot Main HeaderPanel) ===== -->
+    <div class="header">
+      <div class="header-inner">
+        <button class="header-mailbox" onclick="App.navigate('game')" title="回到桌面">
+          <img src="assets/icon_mailbox.png" alt="信箱">
+          <span class="mailbox-label">桌面</span>
+        </button>
+        <div class="header-mid">
+          <h1>故乡来信</h1>
+          <p>桌上的每一张明信片，都来自过去留下的自己。</p>
+        </div>
+        <div class="header-nav">
+          <button class="nav-btn" data-page="write_letter" onclick="App.navigate('write_letter')">
+            <span class="ico">✉️</span> 写信
+          </button>
+          <button class="nav-btn" data-page="postcards" onclick="App.navigate('postcards')">
+            <span class="ico">🖼️</span> 明信片
+          </button>
+          <button class="nav-btn" data-page="memories" onclick="App.navigate('memories')">
+            <span class="ico">📖</span> 记忆
+          </button>
+          <button class="nav-btn" data-page="settings" onclick="App.navigate('settings')">
+            <span class="ico">⚙️</span> 设置
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast-c" id="toast-container"></div>
+
+    <!-- ===== 内容 ===== -->
+    <div class="content">
+
+      <div class="page active" id="page-game"></div>
+      <div class="page" id="page-write_letter"></div>
+      <div class="page page-w" id="page-postcards"></div>
+      <div class="page" id="page-memories"></div>
+      <div class="page page-w" id="page-settings"></div>
+
+    </div>
+  </div>
+
+  <script src="js/auth.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/pages/auth.js"></script>
+  <script src="js/pages/game.js"></script>
+  <script src="js/pages/writeLetter.js"></script>
+  <script src="js/pages/postcards.js"></script>
+  <script src="js/pages/memories.js"></script>
+  <script src="js/pages/settings.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (Auth.isLoggedIn()) {
+        document.getElementById('auth-gate').style.display = 'none';
+        document.getElementById('app').style.display = 'flex';
+        App._authMode = 'v2';
+        App.init();
+      } else {
+        document.getElementById('auth-gate').style.display = 'flex';
+        document.getElementById('app').style.display = 'none';
+        renderAuthPage('login');
+      }
+    });
+  </script>
+</body>
+</html>
