@@ -1,4 +1,4 @@
-"""认证路由 — /api/v2/auth/register | login | me"""
+"""认证路由 — /api/auth/register | login | me"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,7 +11,7 @@ from auth.security import create_token, hash_password, verify_password
 from db.database import get_db
 from db.models import User
 
-router = APIRouter(prefix="/api/v2/auth", tags=["auth"])
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class AuthRequest(BaseModel):

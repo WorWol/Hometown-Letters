@@ -28,7 +28,6 @@ function renderAuthPage(mode) {
             ${isLogin ? '登 录' : '注 册'}
           </button>
         </form>
-        <p class="auth-demo">或 <a href="javascript:void(0)" onclick="skipAuthDemo()">跳过登录，本地体验</a>（数据不会保存）</p>
       </div>
     </div>`;
 }
@@ -76,17 +75,9 @@ function showAuthError(msg) {
   el.style.display = 'block';
 }
 
-function skipAuthDemo() {
-  document.getElementById('auth-gate').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
-  App._authMode = 'demo';
-  App.init();
-}
-
 async function showAppAfterAuth() {
   document.getElementById('auth-gate').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
-  App._authMode = 'v2';
   await App.init();
 }
 

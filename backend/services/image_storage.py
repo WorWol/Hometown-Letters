@@ -6,8 +6,6 @@ from pathlib import Path
 
 import aiofiles
 
-from config import settings
-
 IMAGES_DIR = Path(__file__).resolve().parent.parent / "generated_images"
 IMAGES_DIR.mkdir(exist_ok=True)
 
@@ -48,6 +46,6 @@ async def read_image(image_id: str) -> tuple[bytes, str] | None:
     return None
 
 
-def get_image_url(image_id: str) -> str:
-    """生成图片的 HTTP URL（v2 API）"""
-    return f"http://127.0.0.1:8787/api/v2/image/{image_id}"
+def get_image_url(image_id: str, api_prefix: str = "/api/image") -> str:
+    """生成图片的 HTTP URL"""
+    return f"{api_prefix}/{image_id}"

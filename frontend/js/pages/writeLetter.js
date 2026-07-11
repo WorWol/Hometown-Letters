@@ -243,10 +243,7 @@ async function deliverLetter() {
   // Start API call
   const place = document.getElementById('env-place');
   const mood = document.getElementById('env-mood');
-  const useV2 = App._authMode === 'v2';
-  const sendFn = useV2
-    ? api.v2SendLetter(text, place ? place.value.trim() : '', mood ? mood.value.trim() : '')
-    : api.sendLetter(text, place ? place.value.trim() : '', mood ? mood.value.trim() : '');
+  const sendFn = api.sendLetter(text, place ? place.value.trim() : '', mood ? mood.value.trim() : '');
   const apiPromise = sendFn.catch(e => ({ ok: false, error: e.message || '网络错误' }));
 
   // Wait for envelope fade, then fly animation
@@ -270,7 +267,7 @@ async function deliverLetter() {
     if (status) status.textContent = '投递成功 ✨';
 
     try {
-      const sr = useV2 ? await api.v2GetState() : await api.getState();
+      const sr = await api.getState();
       if (_generation !== gen) { _busy = false; return; }
       if (sr.ok) {
         App.state.letters = sr.data.letters || [];

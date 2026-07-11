@@ -1,8 +1,6 @@
 /* ===== 应用核心：路由 + 状态 + UI ===== */
 
 const App = {
-  _authMode: 'demo', // 'demo' | 'v2'
-
   state: {
     initialized: false,
     currentDay: 0,
@@ -17,35 +15,15 @@ const App = {
   currentPage: 'game',
 
   async init() {
-    if (this._authMode === 'v2') {
-      try {
-        const r = await api.v2GetState();
-        if (r.ok && r.data && r.data.hometown?.hometownName) {
-          this.state = { ...this.state, ...r.data };
-          this.state.initialized = true;
-          this.state.currentDay = r.data.current_day || 0;
-        } else {
-          this._loadDemoData();
-        }
-      } catch (_) {
-        console.log('v2 backend unavailable');
-        this._loadDemoData();
+    try {
+      const r = await api.getState();
+      if (r.ok && r.data && r.data.hometown?.hometownName) {
+        this.state = { ...this.state, ...r.data };
+        this.state.initialized = true;
+        this.state.currentDay = r.data.current_day || 0;
       }
-    } else {
-      // demo mode: try old API, fall back to demo data
-      try {
-        const r = await api.getState();
-        if (r.ok && r.data && r.data.hometown?.hometownName) {
-          this.state = { ...this.state, ...r.data };
-          this.state.initialized = true;
-          this.state.currentDay = r.data.current_day || 0;
-        } else {
-          this._loadDemoData();
-        }
-      } catch (_) {
-        console.log('backend unavailable');
-        this._loadDemoData();
-      }
+    } catch (_) {
+      console.log('无法获取状态，请先登录');
     }
     this.navigate(this.currentPage);
   },
@@ -58,36 +36,6 @@ const App = {
     this.currentPage = page;
     const fn = `render${page.split('_').map(s=>s[0].toUpperCase()+s.slice(1)).join('')}`;
     if (typeof window[fn] === 'function') window[fn]();
-  },
-
-  _loadDemoData() {
-    this.state = {
-      initialized: true,
-      currentDay: 5,
-      hometown: { province:'湖南', city:'郴州', county:'资兴', hometownName:'资兴' },
-      profile: {},
-      postcards: [
-        { id:'1', title:'夏日午后', place:'秀流公园', body:'阳光从梧桐叶缝里漏下来，地上是碎金一样的光斑。风把树叶吹得沙沙响，远处的知了声一浪接一浪。', imageUrl:null, createdAt:'2026-07-01T10:00:00Z', mood:'平静', tags:['夏天','公园'], poem:'那时以为夏天永远不会结束。' },
-        { id:'2', title:'东江湖边', place:'东江湖', body:'雾漫东江，小船在晨雾里若隐若现。站在栈道上，闻到水草和晨露的味道。', imageUrl:null, createdAt:'2026-07-02T06:30:00Z', mood:'宁静', tags:['水边','清晨'], poem:'雾气散去后，山还是那座山。' },
-        { id:'3', title:'老槐树下', place:'老街', body:'村口的老槐树还在，树荫下有几个老人在下棋。走过去的时候，闻到了熟悉的烟火味。', imageUrl:null, createdAt:'2026-07-03T15:00:00Z', mood:'怀念', tags:['老街','树'], poem:'有些地方，连风都是旧的。' },
-      ],
-      letters: [
-        { text:'今天天气不错，我想去走走看看。', place:'资兴', mood:'平静', timestamp:'2026-07-01T09:00:00Z' },
-        { text:'想再去一次东江湖。', place:'东江湖', mood:'宁静', timestamp:'2026-07-02T06:00:00Z' },
-      ],
-      memories: [
-        { text:'小时候喜欢躺在竹席上听外婆讲故事', tags:['家','童年'], timestamp:'2026-07-04T20:00:00Z', analysisStatus:'completed', summary:'外婆的故事是夏夜里最好的催眠曲。' },
-        { text:'学校后门的那棵桂花树，秋天的时候整个走廊都是甜的', tags:['学校','秋天'], timestamp:'2026-07-05T14:00:00Z', analysisStatus:'completed', summary:'那个味道，后来再也没有闻到过。' },
-        { text:'第一次学会骑自行车是在晒谷场上', tags:['童年','技能'], timestamp:'2026-07-06T16:00:00Z', analysisStatus:'completed', summary:'摔了好多次，但学会的那天觉得自己很了不起。' },
-      ],
-      pastSelfProfile: {
-        summary:'是个会一个人发呆很久的小孩，喜欢风和水面的光。',
-        latent_place_affinities:[{name:'秀流公园'},{name:'东江湖'},{name:'老街'},{name:'学校'},{name:'晒谷场'},{name:'河边'}],
-        sensory_biases:[{name:'桂花香'},{name:'蝉鸣'},{name:'竹席凉'},{name:'水草味'},{name:'树影光斑'},{name:'烟火味'}],
-        identity_signals:[{name:'不爱说话的孩子'},{name:'会把很小的事情记很久'},{name:'总会在热闹结束后多停一下'},{name:'会被风和空气里的变化悄悄打动'}],
-        recent_memory_signals:[{name:'外婆的故事'},{name:'桂花香'},{name:'晒谷场'}],
-      },
-    };
   },
 
   showToast(msg, dur = 2500) {

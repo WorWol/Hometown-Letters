@@ -1,11 +1,10 @@
-/* ===== 设置页 (Godot SettingsScene) ===== */
+/* ===== 设置页 ===== */
 
 function renderSettings() {
   const el = document.getElementById('page-settings');
   if (!el) return;
   const s = App.state;
-  const useV2 = App._authMode === 'v2';
-  const userInfo = useV2 ? Auth.getUser() : null;
+  const userInfo = Auth.getUser();
 
   el.innerHTML = `
     <div class="pg-hd">
@@ -19,7 +18,6 @@ function renderSettings() {
       <h3>👤 账户</h3>
       <div class="set-row"><label>用户名</label><span style="font-size:14px;color:var(--dk-text);">${App._e(userInfo.username)}</span></div>
       <button class="btn btn-dng" onclick="doLogout()" style="margin-top:8px;">退出登录</button>
-      <p class="set-ht">退出登录后可在本地体验模式继续使用。</p>
     </div>` : ''}
 
     <div class="set-sec">
@@ -39,12 +37,6 @@ function renderSettings() {
       <div class="set-row"><label>信件</label><span style="font-size:14px;color:var(--dk-text);">${(s.letters||[]).length} 封</span></div>
     </div>
     <div class="set-sec">
-      <h3>⚠️ 管理</h3>
-      <button class="btn btn-dng" onclick="resetAll()">重置存档</button>
-      <p class="set-ht">所有明信片、记忆和信件将被清除。</p>
-      <div class="st" id="s-reset-st">&nbsp;</div>
-    </div>
-    <div class="set-sec">
       <h3>🔌 后端</h3>
       <div class="set-row"><label>地址</label><input class="inp" id="s-backend" value="http://127.0.0.1:8787"></div>
       <button class="btn btn-sec" onclick="checkBack()">检查连接</button>
@@ -62,16 +54,13 @@ async function saveHome() {
   };
 
   try {
-    const useV2 = App._authMode === 'v2';
-    const r = useV2
-      ? await api.v2InitHometown(data)
-      : await api.initHometown({ user_id: 'default', ...data });
+    const r = await api.initHometown(data);
     if (r.ok) {
       App.state.hometown = r.data.hometown;
       App.state.profile = r.data.profile;
       App.state.initialized = true;
       s.textContent = '✅ 已保存';
-      App.showToast('已更新 🏡');
+      App.showToast('已更新');
     } else {
       s.textContent = '❌ 失败';
     }
@@ -82,17 +71,12 @@ async function saveHome() {
 }
 
 async function checkBack() {
-  const s = document.getElementById('s-backend-st'); s.textContent = '检查中…';
-  try { const r = await api.health(); s.textContent = r.ok ? '✅ 后端正常' : '❌ 异常'; } catch (e) { s.textContent = '❌ 无法连接'; }
-}
-
-async function resetAll() {
-  if (!confirm('确定重置？不可撤销。')) return;
-  if (!confirm('再次确认：所有数据将被清除。')) return;
-  const s = document.getElementById('s-reset-st');
+  const s = document.getElementById('s-backend-st');
+  s.textContent = '检查中…';
   try {
-    await api.reset();
-    App.state = { initialized: false, currentDay: 0, hometown: {}, profile: {}, postcards: [], letters: [], memories: [], pastSelfProfile: {} };
-    s.textContent = '✅ 已重置'; App.showToast('已重置 🍃'); renderSettings(); renderGame();
-  } catch (e) { s.textContent = '❌ 失败'; console.error(e); }
+    const r = await api.getMe();
+    s.textContent = r.ok ? '✅ 后端正常' : '❌ 异常';
+  } catch (e) {
+    s.textContent = '❌ 无法连接';
+  }
 }

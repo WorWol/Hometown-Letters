@@ -78,7 +78,6 @@
       if (Auth.isLoggedIn()) {
         document.getElementById('auth-gate').style.display = 'none';
         document.getElementById('app').style.display = 'flex';
-        App._authMode = 'v2';
         App.init();
       } else {
         document.getElementById('auth-gate').style.display = 'flex';

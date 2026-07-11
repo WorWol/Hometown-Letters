@@ -73,7 +73,7 @@ class LetterPipeline:
             # 1. 确保地标库
             logger.info("STEP 1: ensure_landmarks")
             if not landmarks:
-                from services.landmark_service_v2 import ensure_landmarks
+                from services.landmark_service import ensure_landmarks
                 landmarks = await ensure_landmarks(
                     db, user.id, hometown, self.llm, self.search
                 )
@@ -83,14 +83,14 @@ class LetterPipeline:
             # 2. 检查用完，补充
             logger.info("STEP 2: check exhausted")
             search_ctx = await self._search_landmark_context(hometown)
-            from services.landmark_service_v2 import refresh_if_exhausted
+            from services.landmark_service import refresh_if_exhausted
             await refresh_if_exhausted(
                 db, user.id, hometown, self.llm, self.search, search_ctx
             )
 
             # 3. 选择地标
             logger.info("STEP 3: select landmark")
-            from services.landmark_service_v2 import get_next_landmark
+            from services.landmark_service import get_next_landmark
             landmark = await get_next_landmark(
                 db, user.id, text, place_hint, self.llm
             )
@@ -194,7 +194,7 @@ class LetterPipeline:
 
             # 13. 保存
             logger.info("STEP 13: save to DB")
-            from services.landmark_service_v2 import mark_landmark_used
+            from services.landmark_service import mark_landmark_used
             await mark_landmark_used(db, user.id, lm_id, new_day)
             db.add(postcard)
 
@@ -240,7 +240,7 @@ class LetterPipeline:
 
     async def _load_user_hometown(self, db: AsyncSession, user: User) -> dict:
         from db.models import Hometown
-        from services.landmark_service_v2 import get_user_landmarks
+        from services.landmark_service import get_user_landmarks
         from sqlalchemy import select
 
         result = await db.execute(

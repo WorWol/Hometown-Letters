@@ -1,10 +1,10 @@
-"""API v2 路由 — 全部需要 Bearer Token 认证"""
+"""API 路由 — 全部需要 Bearer Token 认证，通过 DI 注入服务"""
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -13,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth.dependencies import get_current_user
 from db.database import get_db
 from db.models import Hometown, Letter, Memory, PastSelfProfile, Postcard, User
+from services import image_storage
+from services import landmark_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v2", tags=["v2"])
+router = APIRouter(prefix="/api", tags=["api"])
 
 
 # ──────────── 请求模型 ────────────
@@ -40,15 +42,28 @@ class MemorySaveReq(BaseModel):
     place_hint: str = ""
 
 
+# ──────────── DI 依赖 ────────────
+
+def get_llm(request: Request):
+    return request.app.state.llm
+
+
+def get_search(request: Request):
+    return request.app.state.search
+
+
+def get_pipeline(request: Request):
+    return request.app.state.pipeline
+
+
 # ──────────── 端点 ────────────
 
 @router.get("/state")
-async def v2_get_state(
+async def get_state(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """获取完整游戏状态"""
-    # Hometown
     result = await db.execute(select(Hometown).where(Hometown.user_id == user.id))
     h = result.scalar_one_or_none()
     hometown = {
@@ -69,7 +84,7 @@ async def v2_get_state(
     for pc in result.scalars().all():
         image_url = ""
         if pc.image_path:
-            image_url = f"http://127.0.0.1:8787/api/v2/image/{pc.image_path}"
+            image_url = image_storage.get_image_url(pc.image_path)
         postcards.append({
             "id": str(pc.id),
             "title": pc.title,
@@ -140,8 +155,7 @@ async def v2_get_state(
         }
 
     # Landmarks
-    from services.landmark_service_v2 import get_user_landmarks
-    landmarks = await get_user_landmarks(db, user.id)
+    landmarks = await landmark_service.get_user_landmarks(db, user.id)
 
     return {
         "ok": True,
@@ -159,10 +173,12 @@ async def v2_get_state(
 
 
 @router.post("/hometown/init")
-async def v2_init_hometown(
+async def init_hometown(
     body: HometownInitReq,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    llm=Depends(get_llm),
+    search=Depends(get_search),
 ):
     """初始化/更新故乡"""
     result = await db.execute(select(Hometown).where(Hometown.user_id == user.id))
@@ -185,14 +201,9 @@ async def v2_init_hometown(
 
     await db.flush()
 
-    # 播种地标
-    from services.llm_service import LlmService
-    from services.search_service import SearchService
-    from services.pipeline_service import LetterPipeline
-    # We need the pipeline's _search_landmark_context — use a simple approach
+    # 联网搜索地标上下文
     search_ctx = ""
     try:
-        _search = SearchService()
         queries = [
             f"{body.city} 地标建筑 景点",
             f"{body.city} 旅游景点 推荐",
@@ -202,7 +213,7 @@ async def v2_init_hometown(
         results = []
         for q in queries[:2]:
             try:
-                items = await _search.search_text(q, num=3)
+                items = await search.search_text(q, num=3)
                 for item in items[:2]:
                     t = item.get("content", "").strip()
                     if t and len(t) > 10:
@@ -213,12 +224,11 @@ async def v2_init_hometown(
     except Exception:
         pass
 
-    from services.landmark_service_v2 import ensure_landmarks
-    await ensure_landmarks(
+    await landmark_service.ensure_landmarks(
         db, user.id,
         {"province": body.province, "city": body.city, "county": body.county,
          "hometownName": body.hometown_name or f"{body.province}{body.city}{body.county}"},
-        None, None, search_ctx,
+        llm, search, search_ctx,
     )
 
     hometown_dict = {
@@ -235,36 +245,13 @@ async def v2_init_hometown(
 
 
 @router.post("/letter/send")
-async def v2_send_letter(
+async def send_letter(
     body: LetterSendReq,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    pipeline=Depends(get_pipeline),
 ):
     """发信核心流程"""
-    from services.llm_service import LlmService
-    from services.search_service import SearchService
-    from services.image_service import ImageService
-    from services.landmark_service import LandmarkService as OldLandmarkService
-    from services.selection_service import SelectionService
-    from services.poem_service import PoemService
-    from services.pipeline_service import LetterPipeline
-
-    llm = LlmService()
-    search = SearchService()
-    image_gen = ImageService()
-    landmark_svc_old = OldLandmarkService(llm)
-    selection_svc = SelectionService(llm)
-    poem_svc = PoemService(llm)
-
-    pipeline = LetterPipeline(
-        llm=llm,
-        search=search,
-        image_gen=image_gen,
-        landmark_svc=landmark_svc_old,
-        selection_svc=selection_svc,
-        poem_svc=poem_svc,
-    )
-
     return await pipeline.process(
         db=db,
         user=user,
@@ -275,14 +262,13 @@ async def v2_send_letter(
 
 
 @router.post("/memory/save")
-async def v2_save_memory(
+async def save_memory(
     body: MemorySaveReq,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    llm=Depends(get_llm),
 ):
     """保存记忆"""
-    from services.llm_service import LlmService
-
     memory = Memory(
         user_id=user.id,
         text=body.text,
@@ -295,7 +281,6 @@ async def v2_save_memory(
     await db.flush()
 
     try:
-        llm = LlmService()
         summary = llm.chat(
             "用一句话概括这段记忆的核心场景和情感。",
             body.text, temperature=0.5, max_tokens=100,
@@ -322,7 +307,7 @@ async def v2_save_memory(
 
 
 @router.get("/postcards")
-async def v2_get_postcards(
+async def get_postcards(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -335,7 +320,7 @@ async def v2_get_postcards(
     for pc in result.scalars().all():
         image_url = ""
         if pc.image_path:
-            image_url = f"http://127.0.0.1:8787/api/v2/image/{pc.image_path}"
+            image_url = image_storage.get_image_url(pc.image_path)
         postcards.append({
             "id": str(pc.id),
             "title": pc.title,
@@ -357,13 +342,12 @@ async def v2_get_postcards(
 
 
 @router.get("/landmarks")
-async def v2_get_landmarks(
+async def get_landmarks(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from services.landmark_service_v2 import get_user_landmarks, get_unused_landmarks
-    all_lm = await get_user_landmarks(db, user.id)
-    unused = await get_unused_landmarks(db, user.id)
+    all_lm = await landmark_service.get_user_landmarks(db, user.id)
+    unused = await landmark_service.get_unused_landmarks(db, user.id)
     used = [lm for lm in all_lm if lm.get("is_used")]
     return {
         "ok": True,
@@ -378,10 +362,9 @@ async def v2_get_landmarks(
 
 
 @router.get("/image/{image_id}")
-async def v2_serve_image(image_id: str):
+async def serve_image(image_id: str):
     """从文件系统提供图片"""
-    from services.image_storage import read_image
-    data = await read_image(image_id)
+    data = await image_storage.read_image(image_id)
     if data:
         img_bytes, content_type = data
         return Response(content=img_bytes, media_type=content_type)
