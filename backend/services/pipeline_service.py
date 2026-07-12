@@ -84,16 +84,35 @@ class LetterPipeline:
             # 直接用 core_place 或 place_hint 作为地点
             core_place = analysis.get("core_place", "") or place_hint or "故乡"
 
-            # ── 图片搜索 ──
-            logger.info("STEP 2: search images (letter-driven keywords)")
+            # ── 图片搜索（记忆点增强）──
+            logger.info("STEP 2: search images (enriched with memorable spots)")
+            # 获取原始搜索关键词
             search_keywords = analysis.get("search_keywords", [])
             if not search_keywords:
                 geo = f"{hometown.get('province','')} {hometown.get('city','')} {hometown.get('county','')}"
                 search_keywords = [f"{geo} {core_place}".strip()]
 
+            # 尝试提取记忆点，生成增强关键词
+            enriched_kws: list[str] = []
+            try:
+                spots = await self._get_memorable_spots(core_place)
+                if len(spots) > 1:
+                    # 空间集 → 用 "{地点} {记忆点}" 搜索
+                    enriched_kws = [f"{core_place} {s}" for s in spots]
+                    logger.info("enriched spots: %s", enriched_kws)
+                else:
+                    # 本身就是具体点 → 不做增强
+                    logger.info("core_place is a specific spot, skip enrichment")
+            except Exception as e:
+                logger.warning("memorable spots extraction failed: %s", e)
+
+            # 搜索：增强词优先，原始词替补
+            all_keywords = enriched_kws + search_keywords
             all_image_urls: list[str] = []
             seen_urls: set[str] = set()
-            for kw in search_keywords[:4]:
+            for kw in all_keywords:
+                if len(all_image_urls) >= 20:
+                    break
                 try:
                     urls = await self.search.search_images(kw, num=6)
                     for url in urls:
@@ -104,9 +123,24 @@ class LetterPipeline:
                     pass
             logger.info(
                 "search: %d keywords → %d unique images",
-                len(search_keywords), len(all_image_urls),
+                len(all_keywords), len(all_image_urls),
             )
 
+            # 回退：增强搜索图片不够
+            if len(all_image_urls) < 10 and enriched_kws:
+                logger.info("enriched search yielded only %d images, retrying with original keywords",
+                            len(all_image_urls))
+                for kw in search_keywords:
+                    try:
+                        urls = await self.search.search_images(kw, num=8)
+                        for url in urls:
+                            if url not in seen_urls:
+                                seen_urls.add(url)
+                                all_image_urls.append(url)
+                    except Exception:
+                        pass
+
+            # 终极回退
             if not all_image_urls:
                 geo = f"{hometown.get('province','')} {hometown.get('city','')} {hometown.get('county','')}"
                 all_image_urls = await self.search.search_images(
@@ -267,6 +301,36 @@ class LetterPipeline:
             tb = traceback.format_exc()
             logger.error("=== pipeline ERROR ===\n%s", tb)
             return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+    async def _get_memorable_spots(self, place_name: str) -> list[str]:
+        """用 LLM 判断地点类型并提取记忆点
+
+        具体地点（桥、湖、建筑）→ 返回 [place_name]（不拆）
+        空间集（校园、公园、景区）→ 返回内部有画面感的子位置列表
+        """
+        prompt = (
+            f'判断「{place_name}」是一个具体的点（一栋建筑、一座桥、一个湖），'
+            f'还是一个大的空间（校园、公园、景区、街区）。\n\n'
+            f'如果是一个具体的点：只输出这个地点名称本身。\n\n'
+            f'如果是一个大的空间：列出内部最有画面感、最能承载情感记忆的 3-5 个具体位置。\n'
+            f'优先选有视觉特征（水、树、老建筑、光影）且能让人停留遐想的地方。\n'
+            f'避免纯功能区域（停车场、宿舍楼、办公楼）。\n\n'
+            f'每个地点 2-10 字。只输出地点名称，每行一个，不要编号，不要解释。'
+        )
+        try:
+            raw = self.llm.chat(
+                "你熟悉各类地点和空间的特征。",
+                prompt,
+                temperature=0.3,
+                max_tokens=100,
+            )
+            spots = [s.strip() for s in raw.strip().split("\n") if s.strip()]
+            if not spots:
+                return [place_name]
+            return spots[:5]
+        except Exception as e:
+            logger.warning("_get_memorable_spots LLM call failed: %s", e)
+            return [place_name]
 
     async def _load_user_hometown(self, db: AsyncSession, user: User) -> dict:
         from db.models import Hometown
