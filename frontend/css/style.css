@@ -509,16 +509,18 @@ img {
   flex: 1;
   min-height: 420px;
   overflow: hidden;
+  background:
+    radial-gradient(ellipse at 78% 18%, rgba(255,240,200,0.3) 0%, transparent 60%),
+    linear-gradient(178deg, #8B6E5A 0%, #7A5D4A 30%, #6B4E3A 60%, #7A5D4A 100%);
 }
 
-/* ── Wooden desk surface ── */
+/* ── Desk objects container ── */
 .desk-surface {
   position: absolute; inset: 0;
-  background:
-    radial-gradient(ellipse at 78% 18%, rgba(240,220,180,0.3) 0%, transparent 60%),
-    linear-gradient(178deg, #5C3D2E 0%, #4A3022 30%, #3E2719 60%, #4D3424 100%);
   overflow: hidden; z-index: 0;
+  pointer-events: none;
 }
+.desk-surface > * { pointer-events: auto; }
 .desk-grain {
   position: absolute; inset: 0; pointer-events: none; z-index: 0;
   background:
