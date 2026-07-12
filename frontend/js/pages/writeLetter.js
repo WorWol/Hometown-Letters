@@ -54,13 +54,17 @@ function renderWriteLetter() {
       </div>
 
       <!-- 步骤 2-4: 信封 + 邮戳 + 邮票 -->
-      <div class="env-envelope" id="env-envelope" onclick="enlargeEnvelope()">
-        <div class="env-stamp" id="env-stamp"></div>
-        <div class="env-postmark" id="env-postmark"></div>
-        <div class="env-step-btns" id="env-env-btns" style="margin-top: 300px; display: none;">
+      <div class="env-envelope-wrap" id="env-envelope-wrap">
+        <div class="env-envelope" id="env-envelope" onclick="enlargeEnvelope()">
+          <img class="env-stamp" id="env-stamp" src="assets/stamp.png" alt="邮票">
+          <div class="env-postmark" id="env-postmark">
+            <span class="env-postmark-inner">资兴<br>2026</span>
+          </div>
+        </div>
+        <div class="env-step-btns" id="env-env-btns">
           <!-- 信封上的按钮 -->
         </div>
-        <div class="env-status" id="env-env-status" style="margin-top: 8px; display: none;">&nbsp;</div>
+        <div class="env-status" id="env-env-status">&nbsp;</div>
       </div>
 
       <!-- 最近的信 -->
