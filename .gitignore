@@ -30,5 +30,9 @@ Thumbs.db
 # 归档（旧文件/截图/测试产物）
 archive/
 
+# 临时截图
+screenshots/
+*.png
+
 # Claude Code 本地设置
 .claude/settings.local.json
