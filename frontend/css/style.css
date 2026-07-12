@@ -505,192 +505,249 @@ img {
    ================================ */
 #page-game {
   position: relative;
-  background-color: #DEEDD7;
-  background-image:
-    repeating-linear-gradient(
-      91deg,
-      transparent 0px, transparent 12px,
-      rgba(120,160,100,0.12) 12px, rgba(120,160,100,0.12) 13px,
-      transparent 13px, transparent 28px
-    ),
-    repeating-linear-gradient(
-      87deg,
-      transparent 0px, transparent 24px,
-      rgba(100,140,80,0.08) 24px, rgba(100,140,80,0.08) 25px,
-      transparent 25px, transparent 40px
-    ),
-    linear-gradient(
-      175deg,
-      #DEEDD7 0%, #D6E9CE 25%, #C8E0BF 50%, #D4E8CC 75%, #DEEDD7 100%
-    );
   padding: 24px 26px;
   flex: 1;
   min-height: 420px;
+  overflow: hidden;
+}
+
+/* ── Wooden desk surface ── */
+.desk-surface {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 78% 18%, rgba(240,220,180,0.3) 0%, transparent 60%),
+    linear-gradient(178deg, #5C3D2E 0%, #4A3022 30%, #3E2719 60%, #4D3424 100%);
+  overflow: hidden; z-index: 0;
+}
+.desk-grain {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    repeating-linear-gradient(2deg, transparent, transparent 3px, rgba(0,0,0,0.03) 3px, rgba(0,0,0,0.03) 4px),
+    repeating-linear-gradient(92deg, transparent, transparent 6px, rgba(255,255,255,0.015) 6px, rgba(255,255,255,0.015) 7px),
+    linear-gradient(180deg, rgba(0,0,0,0.15) 0%, transparent 15%, transparent 85%, rgba(0,0,0,0.2) 100%);
+}
+
+/* ── Desk lamp (top-right) ── */
+.desk-lamp { position: absolute; top: 3%; right: 16%; z-index: 1; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35)); }
+.lamp-base {
+  width: 40px; height: 10px; background: #4a4a4a;
+  margin: 0 auto; border-radius: 2px;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.4);
+}
+.lamp-arm {
+  width: 5px; height: 48px; background: #555;
+  margin: 0 auto;
+  box-shadow: inset 1px 0 0 rgba(255,255,255,0.15);
+}
+.lamp-shade {
+  width: 56px; height: 34px;
+  background: linear-gradient(180deg, #B8D8A8 0%, #8DC880 40%, #5A9A4A 100%);
+  margin: 0 auto -2px; border-radius: 7px 7px 0 0;
   box-shadow:
-    0 0 0 3px rgba(168,213,186,0.4),
-    0 0 0 7px var(--px-shadow),
-    inset 0 0 0 2px rgba(246,251,241,0.12),
-    inset 0 2px 20px rgba(80,120,60,0.06);
+    inset 0 4px 0 rgba(255,255,255,0.25),
+    inset -5px 0 8px rgba(0,0,0,0.15),
+    inset 5px 0 8px rgba(0,0,0,0.08),
+    0 3px 14px rgba(0,0,0,0.3);
+  clip-path: polygon(10% 0, 90% 0, 100% 100%, 0 100%);
 }
-/* Desk corner decorations (preserved, pixel-adjusted) */
-#page-game::before {
-  content: ''; position: absolute;
-  top: 8px; left: 8px; width: 40px; height: 40px;
-  border-top: 4px solid rgba(246,251,241,0.20);
-  border-left: 4px solid rgba(246,251,241,0.20);
+.lamp-shade::after {
+  content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+  width: 48px; height: 12px;
+  background: radial-gradient(ellipse, rgba(255,245,200,0.85) 0%, rgba(255,230,160,0.5) 40%, transparent 75%);
+  border-radius: 50%; filter: blur(3px);
   pointer-events: none;
 }
-#page-game::after {
-  content: ''; position: absolute;
-  bottom: 8px; right: 8px; width: 40px; height: 40px;
-  border-bottom: 4px solid rgba(246,251,241,0.20);
-  border-right: 4px solid rgba(246,251,241,0.20);
-  pointer-events: none;
+.desk-light {
+  position: absolute; z-index: 0; pointer-events: none;
+  top: 5%; left: 30%; width: 60%; height: 55%;
+  background: radial-gradient(ellipse at 75% 10%, rgba(255,220,160,0.25) 0%, rgba(255,200,130,0.12) 30%, rgba(255,180,100,0.04) 55%, transparent 75%);
 }
 
-.desk-bar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 6px 10px; position: relative; z-index: 2;
+/* ── Teacup ── */
+.desk-teacup { position: absolute; bottom: 16%; left: 5%; z-index: 1; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+.teacup-body {
+  width: 34px; height: 24px;
+  background: linear-gradient(180deg, #FDFBF8 0%, #EBE4D4 100%);
+  border-radius: 0 0 8px 8px;
+  box-shadow: inset 0 3px 0 rgba(255,255,255,0.7), 0 3px 5px rgba(0,0,0,0.2);
 }
-.desk-bar .day {
-  font-size: 13px; font-weight: 600;
-  color: rgba(66,51,38,0.85);
-  font-family: var(--font-pixel);
-  letter-spacing: 1px;
+.teacup-handle {
+  position: absolute; right: -8px; top: 4px;
+  width: 10px; height: 13px;
+  border: 2px solid #D8CFB8; border-left: none;
+  border-radius: 0 7px 7px 0;
 }
-.desk-bar .hint {
-  font-size: 12px; color: rgba(110,89,69,0.72);
-  font-family: var(--font-body);
+.teacup-steam {
+  position: absolute; top: -12px; left: 6px;
+  width: 3px; height: 10px;
+  background: rgba(255,255,255,0.3); border-radius: 50%;
+  animation: steam-rise 2s ease-in-out infinite; filter: blur(2px);
+}
+.teacup-steam::after {
+  content: ''; position: absolute; left: 8px; top: 2px;
+  width: 2px; height: 8px;
+  background: rgba(255,255,255,0.2); border-radius: 50%;
+  animation: steam-rise 2s ease-in-out 0.6s infinite; filter: blur(2px);
+}
+@keyframes steam-rise {
+  0%, 100% { transform: translateY(0); opacity: 0.3; }
+  50% { transform: translateY(-5px); opacity: 0.7; }
 }
 
-/* Pixel divider line at desk bottom */
+/* ── Inkwell + pen ── */
+.desk-inkwell { position: absolute; bottom: 28%; left: 14%; z-index: 1; }
+.inkwell-body {
+  width: 18px; height: 18px;
+  background: radial-gradient(circle at 50% 60%, #2a2a2a, #111);
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2), inset 0 -3px 4px rgba(0,0,0,0.3);
+}
+.inkwell-body::after {
+  content: ''; position: absolute; top: 2px; left: 3px; width: 12px; height: 4px;
+  background: rgba(30,60,120,0.6); border-radius: 50%;
+}
+.inkwell-cap { width: 12px; height: 4px; background: #333; margin: 0 auto; border-radius: 2px 2px 0 0; }
+.desk-pen { position: absolute; bottom: 26%; left: 20%; z-index: 1; transform: rotate(25deg); }
+.pen-body {
+  width: 44px; height: 5px;
+  background: linear-gradient(90deg, #8B6B4A 0%, #6B4B2A 70%, #C49A6C 70%, #A07850 100%);
+  border-radius: 2px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.pen-nib {
+  position: absolute; right: -6px; top: -1px;
+  width: 8px; height: 7px;
+  background: linear-gradient(90deg, #D4B896 0%, #E8D5B8 40%, #C49A6C 100%);
+  clip-path: polygon(0 0, 100% 10%, 100% 90%, 0 100%, 0 60%, 30% 50%, 0 40%);
+}
+.pen-clip {
+  position: absolute; left: 12px; top: -3px; width: 12px; height: 3px;
+  background: #C49A6C; border-radius: 1px;
+}
+
+/* ── Desk foot bar ── */
 .desk-foot {
-  display: flex; align-items: flex-end; justify-content: space-between;
-  gap: 12px; margin-top: 6px; padding: 6px 6px 0;
-  position: relative; z-index: 2;
-  border-top: 3px double rgba(120,160,100,0.25);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; padding: 10px 12px 4px;
+  position: relative; z-index: 10;
+  font-family: var(--font-pixel);
 }
-.desk-foot .meta { flex: 1; }
-
-.pc-stack {
-  flex: 1; position: relative; z-index: 1;
-  min-height: 360px;
+.desk-day {
+  font-size: 13px; color: rgba(200,185,160,0.85); letter-spacing: 1px;
 }
-
-.stack-empty {
-  text-align: center; padding: 60px 20px;
-  color: rgba(110,89,69,0.72);
+.desk-letter-count {
+  flex: 1; font-size: 12px; color: rgba(200,185,160,0.55);
   font-family: var(--font-body);
+}
+.desk-next {
+  font-size: 13px !important; padding: 9px 18px !important;
+  background: linear-gradient(180deg, #8B6B4A 0%, #6B4B2A 100%) !important;
+  color: #F0E0C0 !important; letter-spacing: 2px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.12) !important;
+}
+.desk-next:hover {
+  background: linear-gradient(180deg, #9B7B5A 0%, #7B5B3A 100%) !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.15) !important;
+  transform: translateY(-1px);
+}
+
+/* ── Card stack area ── */
+.pc-stack {
+  flex: 1; position: relative; z-index: 2;
+  min-height: 300px;
+}
+
+/* ── Empty state ── */
+.stack-empty {
+  text-align: center; padding: 50px 20px;
+  position: relative; z-index: 2;
+}
+.empty-lamp-glow {
+  width: 80px; height: 80px; margin: 0 auto 20px;
+  background: radial-gradient(circle, rgba(255,220,160,0.2) 0%, rgba(255,200,130,0.08) 50%, transparent 70%);
+  border-radius: 50%;
 }
 .stack-empty h3 {
-  font-size: 16px; margin-bottom: 8px;
-  color: var(--px-ink-sec); font-weight: 500;
-  font-family: var(--font-pixel);
+  font-size: 16px; margin-bottom: 6px;
+  color: rgba(220,200,170,0.9); font-weight: 500;
+  font-family: var(--font-display);
 }
-.stack-empty p { font-size: 13px; }
+.stack-empty p {
+  font-size: 13px; color: rgba(200,185,160,0.55);
+  font-family: var(--font-body);
+}
 
-/* ================================
-   POSTCARD CARD — card on desk (preserved, pixel-tweaked)
-   ================================ */
+/* ── Postcard card — landscape比例, 网格散落 ── */
 .pc-card {
   position: absolute;
-  width: 175px; height: 340px;
+  width: 200px; height: 200px;
   cursor: pointer; user-select: none;
-  transition: filter .05s steps(1), transform .25s steps(6);
+  transition: filter .05s steps(1), transform .2s ease-out;
   transform-origin: center center;
 }
-.pc-card:hover { filter: brightness(1.03); }
-.pc-card:hover .pc-card-bd {
-  box-shadow:
-    0 8px 0 rgba(31,23,15,0.12),
-    0 0 0 1px rgba(0,0,0,0.05);
+.pc-card:hover {
+  filter: brightness(1.08);
+  z-index: 500 !important;
 }
-
-/* Shadow layer — pixel offset */
+.pc-card:hover .pc-card-bd {
+  box-shadow: 0 10px 24px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.15);
+}
 .pc-card-sh {
   position: absolute; inset: 0;
-  background: rgba(61,48,35,0.15);
-  transform: translate(4px,6px);
-  z-index: 0;
+  background: rgba(0,0,0,0.12);
+  transform: translate(4px,5px); z-index: 0;
 }
-
-/* Card body — thick paper */
 .pc-card-bd {
   position: absolute; inset: 0;
-  background: linear-gradient(160deg, #FDFCFA 0%, #F8F5EE 100%);
-  overflow: hidden;
-  z-index: 1;
-  box-shadow:
-    0 1px 0 rgba(31,23,15,0.04),
-    0 3px 0 rgba(31,23,15,0.06),
-    inset 0 1px 0 rgba(255,255,255,0.8);
+  background: linear-gradient(160deg, #FDFCFA 0%, #F5F2EB 100%);
+  overflow: hidden; z-index: 1;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.5), 0 2px 0 rgba(0,0,0,0.04), 0 4px 0 rgba(0,0,0,0.05);
 }
-
-/* Photo frame area */
 .pc-fr {
-  position: relative;
-  width: 152px; height: 72px;
-  margin: 10px auto 0;
-  background: rgba(247,245,239,0.6);
-  border-top: 2px solid rgba(168,213,186,0.45);
-  border-bottom: 1px solid rgba(168,213,186,0.25);
+  width: 100%; height: 124px; overflow: hidden;
 }
-
-.pc-fr-bg { display: none; }
-
-.pc-img {
-  width: 100%; height: 100%;
-  overflow: hidden;
-}
-.pc-img img {
+.pc-fr img, .pc-fr .ph-img {
   width: 100%; height: 100%; object-fit: cover; display: block;
-  background: rgba(247,245,239,0.5);
 }
-.pc-img .ph-img {
-  width: 100%; height: 100%;
-  position: relative;
-  display: flex; align-items: flex-end;
+.pc-fr .ph {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-.pc-img .ph-lbl {
-  width: 100%; padding: 4px 8px;
-  font-size: 10px; color: rgba(255,255,255,0.90);
+.pc-fr .ph-lbl {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 4px 8px;
+  font-size: 10px; color: rgba(255,255,255,0.85);
   background: linear-gradient(0deg, rgba(0,0,0,0.3) 0%, transparent 100%);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
-  letter-spacing: 0.3px;
-  font-family: var(--font-body);
+  font-family: var(--font-pixel);
+}
+.pc-img { width: 100%; height: 100%; overflow: hidden; }
+.pc-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pc-img .ph-img { width: 100%; height: 100%; position: relative; display: flex; align-items: flex-end; }
+.pc-img .ph-lbl {
+  width: 100%; padding: 4px 8px; font-size: 10px; color: rgba(255,255,255,0.90);
+  background: linear-gradient(0deg, rgba(0,0,0,0.3) 0%, transparent 100%);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2); font-family: var(--font-pixel);
 }
 .pc-img .ph {
-  width: 100%; height: 100%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; color: rgba(99,79,61,0.65);
-  background: rgba(247,245,239,0.5);
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
 }
-
-.pc-stamp { display: none; }
-
-/* Card body text */
-.pc-body {
-  padding: 8px 14px 12px;
-  display: flex; flex-direction: column; gap: 2px;
-}
+.pc-body { padding: 6px 10px 10px; }
 .pc-body .loc {
-  font-size: 10px; color: rgba(110,89,69,0.75);
-  line-height: 1.3; font-family: var(--font-body);
-  margin-bottom: 2px;
+  font-size: 10px; color: rgba(110,89,69,0.6);
+  margin-bottom: 2px; letter-spacing: 1px; font-family: var(--font-pixel);
 }
 .pc-body .tit {
-  font-size: 13px; font-weight: 700; line-height: 1.4;
-  font-family: var(--font-pixel);
-  color: var(--px-ink);
-  border-bottom: 1px dashed rgba(168,213,186,0.45);
-  padding-bottom: 6px; margin-bottom: 2px;
-  letter-spacing: 0.5px;
+  font-size: 13px; font-weight: 600; color: var(--px-ink);
+  font-family: var(--font-display); letter-spacing: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pc-body .prev {
-  font-size: 12px; color: var(--px-ink-sec); line-height: 1.85;
-  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
-  font-family: var(--font-body);
-}
+
+/* Hide old desk-bar */
+.desk-bar { display: none; }
+.desk-foot .meta { display: none; }
+.pc-fr-bg { display: none; }
+.pc-body .prev { display: none; }
+
 
 /* ================================
    MODAL — pixel popup panel
@@ -833,44 +890,13 @@ img {
   position: relative;
   z-index: 2;
   width: 100%; max-width: 460px;
-  /* 多层纸张纹理：底色 + 纤维 + 做旧边缘 */
+  /* 生图纸张纹理 + CSS 叠加暖色光晕 */
   background-color: #F5F0E6;
   background-image:
-    /* 纤维纹理 */
-    repeating-linear-gradient(
-      2deg,
-      transparent,
-      transparent 3px,
-      rgba(180, 160, 130, 0.04) 3px,
-      rgba(180, 160, 130, 0.04) 4px
-    ),
-    repeating-linear-gradient(
-      92deg,
-      transparent,
-      transparent 7px,
-      rgba(170, 150, 120, 0.03) 7px,
-      rgba(170, 150, 120, 0.03) 8px
-    ),
-    /* 纸面噪点 */
-    radial-gradient(
-      ellipse at 30% 20%,
-      rgba(255, 248, 235, 0.6) 0%,
-      transparent 50%
-    ),
-    radial-gradient(
-      ellipse at 70% 80%,
-      rgba(240, 225, 200, 0.4) 0%,
-      transparent 50%
-    ),
-    /* 边缘做旧 */
-    radial-gradient(
-      ellipse at 50% 50%,
-      #F7F2E8 0%,
-      #EFE8D8 40%,
-      #E8DDC8 100%
-    );
+    radial-gradient(ellipse at 50% 50%, rgba(247,242,232,0.2) 0%, rgba(232,221,200,0.5) 100%),
+    url('../assets/env_letter_paper.png');
+  background-size: 100% 100%, 400px 400px;
   padding: 32px 30px 22px;
-  /* 纸面阴影 —— 像真正放在桌上的纸 */
   box-shadow:
     0 1px 2px rgba(0,0,0,0.06),
     0 3px 6px rgba(0,0,0,0.08),
@@ -1025,17 +1051,17 @@ img {
   display: flex;
 }
 
-/* Step 2-3: Envelope — keep pixel asset */
+/* Step 2-3: Envelope — vintage illustration asset */
 .env-envelope {
   position: relative;
   width: 280px; height: 280px;
   margin: 0 auto;
-  background: url('../assets/env_envelope_closed.png') no-repeat center / 100% 100%;
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
+  background: url('../assets/env_envelope_closed.png') no-repeat center / cover;
+  border-radius: 4px;
   z-index: 3;
-  filter: drop-shadow(4px 5px 0 rgba(74,63,53,0.35));
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.08),
+    0 6px 16px rgba(0,0,0,0.12);
   transition: opacity 0.4s steps(8), transform 0.5s steps(10);
 }
 
@@ -1048,16 +1074,16 @@ img {
   margin-top: 6px; width: 100%; max-width: 280px;
 }
 
-/* Stamp — pixel art image */
+/* Stamp — vintage illustration asset */
 .env-stamp {
   position: absolute;
-  top: 7%; right: 8%;
-  width: 48px; height: 48px;
+  top: 6%; right: 7%;
+  width: 56px; height: 56px;
   z-index: 5;
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
-  filter: drop-shadow(2px 3px 0 rgba(0,0,0,0.35));
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 1px 2px 4px rgba(0,0,0,0.25);
+  image-rendering: auto;
   transform: scale(0);
   transition: transform 0.35s steps(6);
 }
@@ -1731,12 +1757,7 @@ img {
   .pg-hd { padding: 12px 16px; }
   .pg-hd h2 { font-size: 17px; }
   .card { padding: 10px 14px; }
-  .pc-card { width: 135px; height: 268px; }
-  .pc-fr { width: 118px; height: 56px; margin-top: 8px; }
-  .pc-body .tit { font-size: 11px; }
-  .pc-body .prev { font-size: 10.5px; -webkit-line-clamp: 5; }
   .pc-g { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-  #page-game::before, #page-game::after { display: none; }
 
   /* Auth responsive */
   .auth-container { padding: 0 16px; }
@@ -1760,7 +1781,7 @@ img {
   .env-mailbox { right: 10px; bottom: 10px; width: 52px; height: 52px; }
   #env-env-btns { max-width: 220px; }
   #env-env-status { max-width: 220px; }
-  .env-stamp { width: 36px; height: 36px; }
+  .env-stamp { width: 44px; height: 44px; }
   .env-postmark { width: 48px; height: 48px; }
 }
 
@@ -1777,6 +1798,6 @@ img {
   .env-textarea { min-height: 100px; font-size: 13px; }
   #env-env-btns { max-width: 180px; }
   #env-env-status { max-width: 180px; }
-  .env-stamp { width: 30px; height: 30px; }
+  .env-stamp { width: 36px; height: 36px; }
   .env-postmark { width: 40px; height: 40px; }
 }
