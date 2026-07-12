@@ -22,7 +22,14 @@ const App = {
         this.state.initialized = true;
         this.state.currentDay = r.data.current_day || 0;
       }
-    } catch (_) {
+    } catch (error) {
+      if (error?.status === 401 || error?.message === '未登录') {
+        console.log('登录状态失效，返回登录页');
+        if (typeof showAuthGate === 'function') {
+          showAuthGate();
+        }
+        return;
+      }
       console.log('无法获取状态，请先登录');
     }
     this.navigate(this.currentPage);

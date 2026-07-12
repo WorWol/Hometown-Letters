@@ -507,11 +507,14 @@ img {
   position: relative;
   padding: 24px 26px;
   flex: 1;
-  min-height: 420px;
+  min-height: 640px;
   overflow: hidden;
   background:
     radial-gradient(ellipse at 78% 18%, rgba(255,240,200,0.3) 0%, transparent 60%),
     linear-gradient(178deg, #8B6E5A 0%, #7A5D4A 30%, #6B4E3A 60%, #7A5D4A 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
 }
 
 /* ── Desk objects container ── */
@@ -632,6 +635,7 @@ img {
   gap: 14px; padding: 10px 12px 4px;
   position: relative; z-index: 10;
   font-family: var(--font-pixel);
+  margin-top: auto;
 }
 .desk-day {
   font-size: 13px; color: rgba(200,185,160,0.85); letter-spacing: 1px;
@@ -654,8 +658,13 @@ img {
 
 /* ── Card stack area ── */
 .pc-stack {
-  flex: 1; position: relative; z-index: 2;
-  min-height: 300px;
+  position: relative; z-index: 2;
+  min-height: 250px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+  padding: 8px 8px 0 0;
+  align-items: start;
 }
 
 /* ── Empty state ── */
@@ -680,15 +689,19 @@ img {
 
 /* ── Postcard card — landscape比例, 网格散落 ── */
 .pc-card {
-  position: absolute;
+  position: relative;
   width: 200px; height: 200px;
   cursor: pointer; user-select: none;
   transition: filter .05s steps(1), transform .2s ease-out;
   transform-origin: center center;
+  border: none;
+  padding: 0;
+  background: transparent;
+  justify-self: center;
 }
 .pc-card:hover {
   filter: brightness(1.08);
-  z-index: 500 !important;
+  z-index: 10 !important;
 }
 .pc-card:hover .pc-card-bd {
   box-shadow: 0 10px 24px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.15);
@@ -703,6 +716,7 @@ img {
   background: linear-gradient(160deg, #FDFCFA 0%, #F5F2EB 100%);
   overflow: hidden; z-index: 1;
   box-shadow: 0 1px 0 rgba(255,255,255,0.5), 0 2px 0 rgba(0,0,0,0.04), 0 4px 0 rgba(0,0,0,0.05);
+  border: 1px solid rgba(255,255,255,0.45);
 }
 .pc-fr {
   width: 100%; height: 124px; overflow: hidden;
@@ -742,6 +756,126 @@ img {
   font-size: 13px; font-weight: 600; color: var(--px-ink);
   font-family: var(--font-display); letter-spacing: 1px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.desk-overview {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(260px, 360px);
+  gap: 22px;
+  align-items: stretch;
+}
+
+.desk-copy,
+.desk-feature {
+  background: rgba(248, 241, 229, 0.92);
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,0.18),
+    0 10px 30px rgba(36, 24, 16, 0.18);
+  backdrop-filter: blur(2px);
+}
+
+.desk-copy {
+  padding: 22px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 240px;
+}
+
+.desk-kicker {
+  font-size: 11px;
+  font-family: var(--font-pixel);
+  color: rgba(92, 67, 46, 0.72);
+  letter-spacing: 1.5px;
+  margin-bottom: 10px;
+}
+
+.desk-copy h2 {
+  font-size: 28px;
+  line-height: 1.15;
+  color: #3E2C1F;
+  font-family: var(--font-display);
+  margin-bottom: 10px;
+}
+
+.desk-copy p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: rgba(72, 51, 36, 0.86);
+  max-width: 42em;
+}
+
+.desk-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.desk-stat {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.44);
+  color: rgba(88, 64, 45, 0.88);
+  font-size: 11px;
+  font-family: var(--font-pixel);
+  letter-spacing: 0.8px;
+}
+
+.desk-feature {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.desk-feature-label {
+  font-size: 11px;
+  color: rgba(117, 88, 61, 0.72);
+  font-family: var(--font-pixel);
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+
+.desk-feature-frame {
+  position: relative;
+  height: 220px;
+  overflow: hidden;
+  background: rgba(234, 224, 209, 0.65);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.55),
+    0 6px 18px rgba(32, 20, 12, 0.12);
+}
+
+.desk-feature-frame img,
+.desk-feature-frame .ph-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.desk-feature-meta {
+  padding-top: 12px;
+}
+
+.desk-feature-place {
+  font-size: 11px;
+  color: rgba(109, 84, 60, 0.7);
+  font-family: var(--font-pixel);
+  letter-spacing: 1px;
+  margin-bottom: 5px;
+}
+
+.desk-feature-title {
+  font-size: 18px;
+  line-height: 1.35;
+  color: #3C2A1D;
+  font-family: var(--font-display);
 }
 
 /* Hide old desk-bar */
@@ -1744,6 +1878,9 @@ img {
   .nav-btn { min-width: 60px; min-height: 36px; font-size: 11px; padding: 6px 8px; }
   .mem-lay { flex-direction: column-reverse; }
   .mem-side { width: 100%; }
+  .desk-overview { grid-template-columns: 1fr; }
+  .desk-feature { max-width: 420px; }
+  .pc-stack { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -1755,11 +1892,20 @@ img {
   .header-mailbox img { width: 30px; height: 30px; }
   .header-mailbox .mailbox-label { font-size: 8px; }
   .nav-btn { min-width: 44px; min-height: 30px; font-size: 10px; padding: 4px 6px; }
-  #page-game { padding: 14px 16px; min-height: 360px; }
+  #page-game { padding: 14px 16px; min-height: 360px; gap: 16px; }
   .pg-hd { padding: 12px 16px; }
   .pg-hd h2 { font-size: 17px; }
   .card { padding: 10px 14px; }
   .pc-g { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .desk-copy { padding: 16px 16px 14px; min-height: auto; }
+  .desk-copy h2 { font-size: 22px; }
+  .desk-copy p { font-size: 13px; line-height: 1.7; }
+  .desk-feature { padding: 12px; }
+  .desk-feature-frame { height: 180px; }
+  .pc-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .pc-card { width: 100%; max-width: 180px; height: 190px; }
+  .desk-foot { flex-wrap: wrap; padding: 4px 0 0; }
+  .desk-letter-count { width: 100%; flex: auto; }
 
   /* Auth responsive */
   .auth-container { padding: 0 16px; }
@@ -1792,6 +1938,11 @@ img {
   .nav-btn { min-width: 34px; min-height: 26px; font-size: 9px; padding: 2px 4px; }
   .header-mid h1 { font-size: 15px; }
   .header { box-shadow: 0 0 0 2px var(--px-sage), 0 0 0 4px var(--px-shadow); }
+  .desk-copy h2 { font-size: 19px; }
+  .desk-stats { gap: 8px; }
+  .desk-stat { font-size: 10px; padding: 5px 8px; }
+  .pc-stack { grid-template-columns: 1fr; }
+  .pc-card { max-width: 200px; }
 
   /* Write letter */
   #page-write_letter { padding: 12px 8px; }

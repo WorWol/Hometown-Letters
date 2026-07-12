@@ -17,7 +17,13 @@ const api = {
       clearTimeout(timer);
       if (!resp.ok) {
         const text = await resp.text();
-        throw new Error(`HTTP ${resp.status}: ${text.slice(0, 100)}`);
+        const error = new Error(`HTTP ${resp.status}: ${text.slice(0, 100)}`);
+        error.status = resp.status;
+        error.responseText = text;
+        if (resp.status === 401 && window.Auth && typeof window.Auth.clear === 'function') {
+          window.Auth.clear();
+        }
+        throw error;
       }
       return resp.json();
     } catch (e) {
@@ -29,7 +35,11 @@ const api = {
 
   _fetchAuth(path, options = {}) {
     const token = Auth.getToken();
-    if (!token) throw new Error('未登录');
+    if (!token) {
+      const error = new Error('未登录');
+      error.status = 401;
+      throw error;
+    }
 
     const headers = {
       'Content-Type': 'application/json',

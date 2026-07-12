@@ -2,38 +2,10 @@
 
 let _gameBusy = false;
 
-/* 网格散落算法 — 每张卡占一个网格单元，避免堆叠 */
-function scatterPositions(count) {
-  const pos = [];
-  if (count === 0) return pos;
-
-  const cols = Math.min(count, count <= 4 ? 2 : count <= 8 ? 3 : 4);
-  const rows = Math.ceil(count / cols);
-
-  /* 桌面可用区域（百分比，避开台灯、茶杯位置） */
-  const area = { left: 8, top: 8, right: 78, bottom: 82 };
-  const cellW = (area.right - area.left) / cols;
-  const cellH = (area.bottom - area.top) / rows;
-
-  for (let i = 0; i < count; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-
-    /* 格内随机偏移，避免过于整齐 */
-    const jitterX = (_hash(i, 1) - 0.5) * cellW * 0.35;
-    const jitterY = (_hash(i, 2) - 0.5) * cellH * 0.30;
-    const rRot = _hash(i, 3);
-    const rot = (rRot < 0.4) ? -3 + rRot * 12 : (rRot < 0.8) ? _hash(i, 5) * 10 - 5 : _hash(i, 6) * 16 - 8;
-    const scale = 0.88 + _hash(i, 4) * 0.14;
-    const zIndex = i + 1;
-
-    pos.push({
-      left: area.left + col * cellW + cellW / 2 + jitterX,
-      top:  area.top  + row * cellH + cellH / 2 + jitterY,
-      rotation: rot, scale, zIndex,
-    });
-  }
-  return pos;
+function deskCardTransform(index) {
+  const rotate = [-4, 3, -2, 5, -3, 2, -5, 4][index % 8];
+  const shiftY = [0, 10, -6, 12, -10, 8, -4, 6][index % 8];
+  return `transform: rotate(${rotate}deg) translateY(${shiftY}px);`;
 }
 
 function renderGame() {
@@ -42,6 +14,7 @@ function renderGame() {
   const state = App.state;
   const pcs = state.postcards || [];
   const has = pcs.length > 0;
+  const latest = pcs[0] || null;
 
   /* ── 桌面物件 HTML ── */
   const deskItems = `
@@ -70,14 +43,11 @@ function renderGame() {
       <div class="pen-clip"></div>
     </div>`;
 
-  /* ── 卡片 ── */
   let cards = '';
   if (has) {
-    const positions = scatterPositions(pcs.length);
     cards = pcs.map((pc, i) => {
-      const pt = positions[i];
-      return `<div class="pc-card"
-                style="left:${pt.left.toFixed(1)}%;top:${pt.top.toFixed(1)}%;transform:translate(-50%,-50%)rotate(${pt.rotation.toFixed(1)}deg)scale(${pt.scale.toFixed(2)});z-index:${pt.zIndex}"
+      return `<button class="pc-card"
+                style="${deskCardTransform(i)}"
                 onclick="App.showPostcardDetail(pc__${i})">
           <div class="pc-card-sh"></div>
           <div class="pc-card-bd">
@@ -87,7 +57,7 @@ function renderGame() {
               <div class="tit">${App._e(pc.title||'无题')}</div>
             </div>
           </div>
-        </div>`;
+        </button>`;
     }).join('');
     window._tdPCs = pcs;
     cards = cards.replace(/pc__(\d+)/g, (_, i) => `window._tdPCs[${i}]`);
@@ -97,6 +67,27 @@ function renderGame() {
     <div class="desk-surface">
       ${deskItems}
       <div class="desk-grain"></div>
+    </div>
+    <div class="desk-overview">
+      <div class="desk-copy">
+        <div class="desk-kicker">Desktop</div>
+        <h2>桌上的来信</h2>
+        <p>${has ? '这些明信片会直接铺在桌面上，方便你先看画面，再决定要不要展开细读。' : '桌面已经准备好了。先写一封信，第一张明信片就会落在这里。'}</p>
+        <div class="desk-stats">
+          <span class="desk-stat">第 ${state.currentDay||0} 天</span>
+          <span class="desk-stat">${pcs.length} 张明信片</span>
+          <span class="desk-stat">${(state.letters||[]).length} 封来信</span>
+        </div>
+      </div>
+      ${latest ? `
+        <div class="desk-feature" onclick="App.showPostcardDetail(window._tdPCs[0])">
+          <div class="desk-feature-label">最新收到</div>
+          <div class="desk-feature-frame">${App._imgHtml(latest)}</div>
+          <div class="desk-feature-meta">
+            <div class="desk-feature-place">${App._e(latest.place || '未知地点')}</div>
+            <div class="desk-feature-title">${App._e(latest.title || '无题明信片')}</div>
+          </div>
+        </div>` : ''}
     </div>
     ${has ? `<div class="pc-stack">${cards}</div>` : `
       <div class="pc-stack">
