@@ -1,14 +1,12 @@
 """故乡来信 — FastAPI 后端（统一架构）
 
 流程：接收到信请求 →
-  1. LandmarkService 确保地标库存在（为空则 LLM 播种）
-  2. LandmarkService 检查是否用完（用完则 LLM 补充）
-  3. LandmarkService 选出本次地标（可用 LLM 匹配信件）
-  4. SearchService 搜索图片
-  5. SelectionService 筛选相关图片
-  6. PoemService 生成诗歌 / 标题 / 正文 / 图像提示词
-  7. ImageService 生成图像（以上游图片做参考）
-  8. 标记地标已使用，存储，返回
+  1. 信件分析（提取 core_place）
+  2. SearchService 搜索图片
+  3. SelectionService 筛选相关图片
+  4. PoemService 生成诗歌 / 标题 / 正文 / 图像提示词
+  5. ImageService 生成图像（以上游图片做参考）
+  6. 存储，返回
 """
 from __future__ import annotations
 
@@ -25,7 +23,7 @@ from logger import setup_logging
 logger = setup_logging()
 
 # ── 创建应用 ──
-app = FastAPI(title="故乡来信 API", version="3.0.0")
+app = FastAPI(title="故乡来信 API", version="3.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -61,7 +59,7 @@ async def startup():
     llm = LlmService()
     search = SearchService()
     image_gen = ImageService()
-    selection_svc = SelectionService(llm)
+    selection_svc = SelectionService()
     poem_svc = PoemService(llm)
 
     app.state.llm = llm
@@ -72,7 +70,6 @@ async def startup():
         llm=llm,
         search=search,
         image_gen=image_gen,
-        landmark_svc=None,  # 不会使用，pipeline 内部直接调模块函数
         selection_svc=selection_svc,
         poem_svc=poem_svc,
     )

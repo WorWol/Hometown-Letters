@@ -31,8 +31,6 @@ class User(Base):
                             cascade="all, delete-orphan")
     profile = relationship("Profile", back_populates="user", uselist=False,
                            cascade="all, delete-orphan")
-    landmarks = relationship("Landmark", back_populates="user",
-                             cascade="all, delete-orphan")
     postcards = relationship("Postcard", back_populates="user",
                              cascade="all, delete-orphan")
     letters = relationship("Letter", back_populates="user",
@@ -94,7 +92,6 @@ class Landmark(Base):
     is_used = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    user = relationship("User", back_populates="landmarks")
 
 
 # ──────────── postcards ────────────

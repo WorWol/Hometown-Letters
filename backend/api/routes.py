@@ -14,7 +14,6 @@ from auth.dependencies import get_current_user
 from db.database import get_db
 from db.models import Hometown, Letter, Memory, PastSelfProfile, Postcard, User
 from services import image_storage
-from services import landmark_service
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +153,6 @@ async def get_state(
             "recent_memory_signals": psp.recent_memory_signals,
         }
 
-    # Landmarks
-    landmarks = await landmark_service.get_user_landmarks(db, user.id)
-
     return {
         "ok": True,
         "data": {
@@ -167,7 +163,6 @@ async def get_state(
             "memories": memories,
             "postcards": postcards,
             "past_self_profile": past_self,
-            "landmarks": landmarks,
         },
     }
 
@@ -177,8 +172,6 @@ async def init_hometown(
     body: HometownInitReq,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    llm=Depends(get_llm),
-    search=Depends(get_search),
 ):
     """初始化/更新故乡"""
     result = await db.execute(select(Hometown).where(Hometown.user_id == user.id))
@@ -200,36 +193,6 @@ async def init_hometown(
         db.add(h)
 
     await db.flush()
-
-    # 联网搜索地标上下文
-    search_ctx = ""
-    try:
-        queries = [
-            f"{body.city} 地标建筑 景点",
-            f"{body.city} 旅游景点 推荐",
-        ]
-        if body.county:
-            queries.append(f"{body.county} 地标 日常 老街")
-        results = []
-        for q in queries[:2]:
-            try:
-                items = await search.search_text(q, num=3)
-                for item in items[:2]:
-                    t = item.get("content", "").strip()
-                    if t and len(t) > 10:
-                        results.append(f"[{q}] {t[:120]}")
-            except Exception:
-                pass
-        search_ctx = "\n".join(results[:8]) if results else ""
-    except Exception:
-        pass
-
-    await landmark_service.ensure_landmarks(
-        db, user.id,
-        {"province": body.province, "city": body.city, "county": body.county,
-         "hometownName": body.hometown_name or f"{body.province}{body.city}{body.county}"},
-        llm, search, search_ctx,
-    )
 
     hometown_dict = {
         "province": h.province, "city": h.city,
@@ -339,26 +302,6 @@ async def get_postcards(
             "usedFallback": pc.used_fallback,
         })
     return {"ok": True, "data": postcards}
-
-
-@router.get("/landmarks")
-async def get_landmarks(
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    all_lm = await landmark_service.get_user_landmarks(db, user.id)
-    unused = await landmark_service.get_unused_landmarks(db, user.id)
-    used = [lm for lm in all_lm if lm.get("is_used")]
-    return {
-        "ok": True,
-        "data": {
-            "total": len(all_lm),
-            "used_count": len(used),
-            "used_ids": [lm["id"] for lm in used],
-            "unused_count": len(unused),
-            "landmarks": all_lm,
-        },
-    }
 
 
 @router.get("/image/{image_id}")

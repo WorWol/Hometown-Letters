@@ -85,7 +85,4 @@ const api = {
     return this._fetchAuth('/api/postcards');
   },
 
-  async getLandmarks() {
-    return this._fetchAuth('/api/landmarks');
-  },
 };

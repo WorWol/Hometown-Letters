@@ -1,4 +1,20 @@
-"""核心写信管道 — 从 main.py 提取的 13 步流程"""
+"""核心写信管道 — 信件内容驱动的简化流程
+
+简化架构：
+  信件内容 + place_hint（主驱动）
+      ↓
+  阶段 1：信件深度分析（1 次 LLM）
+      ↓
+  阶段 2：智能图片搜索（0 次 LLM，用分析结果的关键词）
+      ↓
+  阶段 3：图片筛选（0 次 LLM，用分析结果的视觉主题匹配）
+      ↓
+  阶段 4：信件驱动的图片提示词（1 次 LLM，输入分析结果）
+      ↓
+  阶段 5：生图 + 诗/标题/正文（4 次 LLM，输入增强）
+
+core_place 直接作为明信片的 place，不再经过地标库。
+"""
 from __future__ import annotations
 
 import logging
@@ -7,7 +23,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Landmark, Letter, Postcard, User
+from db.models import Letter, Postcard, User
 from services.image_storage import get_image_url, save_image
 
 logger = logging.getLogger(__name__)
@@ -19,41 +35,14 @@ class LetterPipeline:
         llm,
         search,
         image_gen,
-        landmark_svc,
         selection_svc,
         poem_svc,
     ):
         self.llm = llm
         self.search = search
         self.image_gen = image_gen
-        self.landmark_svc = landmark_svc
         self.selection_svc = selection_svc
         self.poem_svc = poem_svc
-
-    async def _search_landmark_context(self, hometown: dict) -> str:
-        city = hometown.get("city", "")
-        county = hometown.get("county", "")
-        if not city and not county:
-            return ""
-        queries = [
-            f"{city} 地标建筑 景点",
-            f"{city} 旅游景点 推荐",
-        ]
-        if county:
-            queries.append(f"{county} 地标 日常 老街")
-            queries.append(f"{county} 公园 学校 市场")
-
-        results = []
-        for q in queries[:3]:
-            try:
-                items = await self.search.search_text(q, num=5)
-                for item in items[:3]:
-                    text = item.get("content", "").strip()
-                    if text and len(text) > 10:
-                        results.append(f"[{q}] {text[:150]}")
-            except Exception:
-                pass
-        return "\n".join(results[:12]) if results else ""
 
     async def process(
         self,
@@ -63,85 +52,113 @@ class LetterPipeline:
         place_hint: str = "",
         mood_hint: str = "",
     ) -> dict:
-        """执行完整的 13 步写信管道，返回 {ok, data/error}"""
+        """执行完整的写信管道，返回 {ok, data/error}"""
         logger.info("=== pipeline start user=%s day=%s ===", user.id, user.current_day)
         try:
-            state = await self._load_user_hometown(db, user)
-            hometown = state["hometown"]
-            landmarks = state["landmarks"]
+            hometown = await self._load_user_hometown(db, user)
 
-            # 1. 确保地标库
-            logger.info("STEP 1: ensure_landmarks")
-            if not landmarks:
-                from services.landmark_service import ensure_landmarks
-                landmarks = await ensure_landmarks(
-                    db, user.id, hometown, self.llm, self.search
+            # ── 阶段 1：信件深度分析 ──
+            logger.info("STAGE 1: letter analysis")
+            from services.letter_analysis_service import LetterAnalysisService
+            letter_analyzer = LetterAnalysisService(self.llm)
+            analysis = letter_analyzer.analyze_letter_deep(
+                letter_text=text,
+                place_hint=place_hint,
+                mood_hint=mood_hint,
+                hometown=hometown if hometown.get("city") else None,
+            )
+            logger.info(
+                "analysis: core_place=%s tone=%s keywords=%s themes=%s",
+                analysis["core_place"],
+                analysis["emotional_tone"],
+                analysis["search_keywords"],
+                analysis["visual_themes"],
+            )
+
+            # 直接用 core_place 或 place_hint 作为地点
+            core_place = analysis.get("core_place", "") or place_hint or "故乡"
+
+            # ── 图片搜索 ──
+            logger.info("STEP 2: search images (letter-driven keywords)")
+            search_keywords = analysis.get("search_keywords", [])
+            if not search_keywords:
+                geo = f"{hometown.get('province','')} {hometown.get('city','')} {hometown.get('county','')}"
+                search_keywords = [f"{geo} {core_place}".strip()]
+
+            all_image_urls: list[str] = []
+            seen_urls: set[str] = set()
+            for kw in search_keywords[:4]:
+                try:
+                    urls = await self.search.search_images(kw, num=6)
+                    for url in urls:
+                        if url not in seen_urls:
+                            seen_urls.add(url)
+                            all_image_urls.append(url)
+                except Exception:
+                    pass
+            logger.info(
+                "search: %d keywords → %d unique images",
+                len(search_keywords), len(all_image_urls),
+            )
+
+            if not all_image_urls:
+                geo = f"{hometown.get('province','')} {hometown.get('city','')} {hometown.get('county','')}"
+                all_image_urls = await self.search.search_images(
+                    f"{geo} {core_place}".strip(), num=6
                 )
-            if not landmarks:
-                return {"ok": False, "error": "无法生成地标库，请先设置故乡信息"}
 
-            # 2. 检查用完，补充
-            logger.info("STEP 2: check exhausted")
-            search_ctx = await self._search_landmark_context(hometown)
-            from services.landmark_service import refresh_if_exhausted
-            await refresh_if_exhausted(
-                db, user.id, hometown, self.llm, self.search, search_ctx
+            # ── 图片筛选 ──
+            logger.info("STEP 3: filter images by letter themes")
+            filtered_urls = self.selection_svc.filter_relevant_images(
+                all_image_urls, analysis
             )
 
-            # 3. 选择地标
-            logger.info("STEP 3: select landmark")
-            from services.landmark_service import get_next_landmark
-            landmark = await get_next_landmark(
-                db, user.id, text, place_hint, self.llm
-            )
-            if not landmark:
-                return {"ok": False, "error": "没有可用的地标"}
-
-            lm_name = landmark.get("name", "故乡")
-            lm_desc = landmark.get("description", "")
-            lm_id = landmark.get("id", 0)
-
-            # 4. 搜索图片
-            logger.info("STEP 4: search images for %s", lm_name)
-            geo = f"{hometown.get('province','')} {hometown.get('city','')} {hometown.get('county','')}"
-            search_query = f"{geo} {lm_name}".strip()
-            raw_image_urls = await self.search.search_images(search_query, num=6)
-
-            # 5. 筛选图片
-            logger.info("STEP 5: filter images")
-            filtered_urls = self.selection_svc.filter_relevant_images(raw_image_urls, landmark)
-
-            # 6. 搜索文字
-            logger.info("STEP 6: search text")
-            text_info = await self.search.search_text(search_query, num=3)
+            # ── 搜索文字 ──
+            logger.info("STEP 4: search text")
+            text_info = await self.search.search_text(core_place, num=3)
             context_str = "；".join(
                 [item["content"][:120] for item in text_info[:3]]
-            ) if text_info else lm_desc
+            ) if text_info else ""
 
-            # 7. 生成诗/标题/正文
-            logger.info("STEP 7: poem/title/body")
-            poem = self.poem_svc.generate_poem(landmark, context_str)
-            title = self.poem_svc.generate_title(landmark, poem)
-            body_text = self.poem_svc.generate_body(landmark, poem, text)
+            # ── 生成诗/标题/正文 ──
+            logger.info("STEP 5: poem/title/body (letter-informed)")
+            simple_landmark = {"name": core_place, "description": ""}
+            poem = self.poem_svc.generate_poem(simple_landmark, context_str, analysis)
+            title = self.poem_svc.generate_title(simple_landmark, poem, analysis)
+            body_text = self.poem_svc.generate_body(simple_landmark, poem, text, analysis)
 
-            # 8. 图像提示词
-            logger.info("STEP 8: image prompt")
-            image_prompt = self.poem_svc.generate_image_prompt(landmark, context_str)
+            # ── 图像提示词 ──
+            logger.info("STEP 6: image prompt (from analysis)")
+            image_prompt = analysis.get("image_prompt", "")
+            if not image_prompt:
+                image_prompt = self.poem_svc.generate_image_prompt(
+                    simple_landmark, context_str
+                )
 
-            # 9. 生图
-            logger.info("STEP 9: generate image")
+            # ── 生图 ──
+            logger.info("STEP 7: generate image")
             from services.image_service import ImageService as ImgSvc
             ref_images = []
-            for url in filtered_urls[:2]:
-                encoded = await ImgSvc.download_and_encode(url)
+            if filtered_urls:
+                encoded = await ImgSvc.download_and_encode(filtered_urls[0])
                 if encoded:
                     ref_images.append(encoded)
+                    tone = analysis.get("emotional_tone", "warm and nostalgic")
+                    image_prompt = (
+                        f"Transform the reference photo into a 16-bit pixel art scene. "
+                        f"Keep the same composition, buildings, and key elements. "
+                        f"Aim for a {tone} atmosphere. "
+                        f"Do NOT change the subject or add unrelated elements. "
+                        f"Simply pixelate and stylize the existing scene."
+                    )
+                else:
+                    image_prompt = analysis.get("image_prompt", image_prompt)
             gen_result = await self.image_gen.generate(image_prompt, reference_images=ref_images)
 
-            # 10. 生成 ID
+            # ── 生成 ID ──
             pc_id = f"pc-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
 
-            # 11. 保存图片到文件系统
+            # ── 保存图片到文件系统 ──
             local_image_url = ""
             gen_image_url = gen_result.get("url", "")
             if gen_image_url:
@@ -164,8 +181,8 @@ class LetterPipeline:
                 except Exception:
                     local_image_url = filtered_urls[0]
 
-            # 12. 组装明信片
-            logger.info("STEP 12: assemble postcard")
+            # ── 组装明信片 ──
+            logger.info("STEP 8: assemble postcard")
             now_ts = datetime.now(timezone.utc).isoformat()
             new_day = user.current_day + 1
 
@@ -174,10 +191,10 @@ class LetterPipeline:
                 title=title,
                 body=body_text,
                 poem=poem,
-                place=lm_name,
-                landmark_id=lm_id,
-                landmark_description=lm_desc,
-                mood=mood_hint or "平静",
+                place=core_place,
+                landmark_id=None,
+                landmark_description="",
+                mood=mood_hint or analysis.get("emotional_tone", "平静"),
                 image_path=pc_id,
                 image_prompt=image_prompt,
                 search_image_urls=filtered_urls,
@@ -192,17 +209,16 @@ class LetterPipeline:
                     local_image_url = filtered_urls[0]
                 postcard.used_fallback = True
 
-            # 13. 保存
-            logger.info("STEP 13: save to DB")
-            from services.landmark_service import mark_landmark_used
-            await mark_landmark_used(db, user.id, lm_id, new_day)
+            # ── 保存 ──
+            logger.info("STEP 9: save to DB")
             db.add(postcard)
 
+            effective_mood = mood_hint or analysis.get("emotional_tone", "平静")
             letter = Letter(
                 user_id=user.id,
                 text=text,
-                place=lm_name,
-                mood=mood_hint or "平静",
+                place=core_place,
+                mood=effective_mood,
                 timestamp=datetime.now(timezone.utc),
             )
             db.add(letter)
@@ -219,10 +235,10 @@ class LetterPipeline:
                     "title": title,
                     "body": body_text,
                     "poem": poem,
-                    "place": lm_name,
-                    "landmarkId": lm_id,
-                    "landmarkDescription": lm_desc,
-                    "mood": mood_hint or "平静",
+                    "place": core_place,
+                    "landmarkId": None,
+                    "landmarkDescription": "",
+                    "mood": effective_mood,
                     "imageUrl": local_image_url,
                     "imagePrompt": image_prompt,
                     "searchImageUrls": filtered_urls,
@@ -240,21 +256,17 @@ class LetterPipeline:
 
     async def _load_user_hometown(self, db: AsyncSession, user: User) -> dict:
         from db.models import Hometown
-        from services.landmark_service import get_user_landmarks
         from sqlalchemy import select
 
         result = await db.execute(
             select(Hometown).where(Hometown.user_id == user.id)
         )
         hometown_row = result.scalar_one_or_none()
-        hometown = {}
         if hometown_row:
-            hometown = {
+            return {
                 "province": hometown_row.province or "",
                 "city": hometown_row.city or "",
                 "county": hometown_row.county or "",
                 "hometownName": hometown_row.hometown_name or "",
             }
-
-        landmarks = await get_user_landmarks(db, user.id)
-        return {"hometown": hometown, "landmarks": landmarks}
+        return {}
