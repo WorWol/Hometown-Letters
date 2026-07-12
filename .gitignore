@@ -34,5 +34,9 @@ archive/
 screenshots/
 *.png
 
+# 测试产物
+.pytest_cache/
+test-results/
+
 # Claude Code 本地设置
 .claude/settings.local.json

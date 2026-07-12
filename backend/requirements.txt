@@ -11,3 +11,4 @@ alembic>=1.13.0
 passlib[bcrypt]>=1.7.4
 python-jose[cryptography]>=3.3.0
 aiofiles>=24.0.0
+oss2>=2.18.0

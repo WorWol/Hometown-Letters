@@ -98,6 +98,13 @@ class Settings:
     llm_timeout: int = 30
     download_timeout: int = 15
 
+    # ── 阿里云 OSS 对象存储 ──
+    oss_access_key_id: str = field(default_factory=lambda: _env("OSS_ACCESS_KEY_ID", ""))
+    oss_access_key_secret: str = field(default_factory=lambda: _env("OSS_ACCESS_KEY_SECRET", ""))
+    oss_endpoint: str = field(default_factory=lambda: _env("OSS_ENDPOINT", ""))
+    oss_bucket_name: str = field(default_factory=lambda: _env("OSS_BUCKET_NAME", ""))
+    oss_cdn_domain: str = field(default_factory=lambda: _env("OSS_CDN_DOMAIN", ""))
+
     # ── 认证 ──
     secret_key: str = field(
         default_factory=lambda: _env("SECRET_KEY", "change-me-in-production-please-use-a-real-secret")
