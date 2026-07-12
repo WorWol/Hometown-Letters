@@ -17,7 +17,7 @@ const App = {
   async init() {
     try {
       const r = await api.getState();
-      if (r.ok && r.data && r.data.hometown?.hometownName) {
+      if (r.ok && r.data) {
         this.state = { ...this.state, ...r.data };
         this.state.initialized = true;
         this.state.currentDay = r.data.current_day || 0;
@@ -68,7 +68,7 @@ const App = {
           ${pc.createdAt?' · '+new Date(pc.createdAt).toLocaleDateString('zh-CN'):''}
         </div>
         <div class="modal-pc">
-          <div class="fr">
+          <div class="fr" onclick="event.stopPropagation();enlargePostcardImage(this.querySelector('.iw'))">
             <img class="ov" src="assets/postcard_frame.png" alt="">
             <div class="iw">${imgHtml}</div>
           </div>
@@ -124,4 +124,39 @@ const App = {
   },
 
   _e(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+};
+
+/* ================ 明信片图片点击放大 ================ */
+
+function enlargePostcardImage(iwEl) {
+  if (!iwEl) return;
+
+  // 创建全屏遮罩
+  const overlay = document.createElement('div');
+  overlay.className = 'env-overlay';
+
+  // 克隆图片容器
+  const clone = iwEl.cloneNode(true);
+  clone.className = 'env-img-large';
+
+  // 如果有 img 标签，修复其样式以显示原图
+  const img = clone.querySelector('img');
+  if (img) {
+    img.style.width = 'auto';
+    img.style.height = 'auto';
+    img.style.maxWidth = '90vw';
+    img.style.maxHeight = '85vh';
+    img.style.objectFit = 'contain';
+    img.style.display = 'block';
+    img.onerror = function() { this.style.display = 'none'; };
+  }
+
+  overlay.appendChild(clone);
+
+  // 点击遮罩关闭
+  overlay.addEventListener('click', function() {
+    overlay.remove();
+  });
+
+  document.body.appendChild(overlay);
 };

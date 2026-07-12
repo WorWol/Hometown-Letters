@@ -54,7 +54,7 @@ function renderWriteLetter() {
       </div>
 
       <!-- 步骤 2-4: 信封 + 邮戳 + 邮票 -->
-      <div class="env-envelope" id="env-envelope">
+      <div class="env-envelope" id="env-envelope" onclick="enlargeEnvelope()">
         <div class="env-stamp" id="env-stamp"></div>
         <div class="env-postmark" id="env-postmark"></div>
         <div class="env-step-btns" id="env-env-btns" style="margin-top: 300px; display: none;">
@@ -103,7 +103,7 @@ function _renderButtons() {
         cardBtns.style.display = '';
         cardBtns.innerHTML = `
           <button class="env-btn env-btn-seal" id="btn-seal" onclick="sealLetter()">
-            ✉️ 装进信封
+            装进信封
           </button>`;
       }
       if (envBtns) envBtns.style.display = 'none';
@@ -115,12 +115,12 @@ function _renderButtons() {
         if (!_stampApplied) {
           envBtns.innerHTML = `
             <button class="env-btn env-btn-stamp" id="btn-stamp" onclick="applyStamp()">
-              🏷️ 贴邮戳
+              贴邮戳
             </button>`;
         } else {
           envBtns.innerHTML = `
             <button class="env-btn env-btn-send" id="btn-send" onclick="deliverLetter()">
-              📮 投进邮箱
+              投进邮箱
             </button>`;
         }
       }
@@ -132,11 +132,11 @@ function _renderRecentItem(l) {
   const g = App._imgGradient(l.place, l.mood);
   return `
     <div class="rl-item">
-      <div class="rl-thumb" style="background:${g}">📮</div>
+      <div class="rl-thumb" style="background:${g}">@</div>
       <div class="rl-info">
         <div class="rl-text">${App._e(l.text)}</div>
         <div class="rl-meta">
-          ${l.place ? `📍 ${App._e(l.place)}` : ''}
+          ${l.place ? `${App._e(l.place)}` : ''}
           ${l.mood ? ` · ${App._e(l.mood)}` : ''}
           ${l.timestamp ? ` · ${new Date(l.timestamp).toLocaleString('zh-CN')}` : ''}
         </div>
@@ -264,7 +264,7 @@ async function deliverLetter() {
     // → SUCCESS
     _curStep = LetterStep.SUCCESS;
     if (scene) scene.classList.add('success');
-    if (status) status.textContent = '投递成功 ✨';
+    if (status) status.textContent = '投递成功！';
 
     try {
       const sr = await api.getState();
@@ -376,6 +376,35 @@ function _resetScene() {
   if (newTa && savedText) newTa.value = savedText;
   if (newPlace && savedPlace) newPlace.value = savedPlace;
   if (newMood && savedMood) newMood.value = savedMood;
+}
+
+
+/* ================ 信封点击放大 ================ */
+
+function enlargeEnvelope() {
+  if (_curStep !== LetterStep.STAMPED) return;
+
+  const env = document.getElementById('env-envelope');
+  if (!env) return;
+
+  // 创建全屏遮罩
+  const overlay = document.createElement('div');
+  overlay.className = 'env-overlay';
+
+  // 克隆信封
+  const clone = env.cloneNode(true);
+  clone.id = 'env-envelope-large';
+  clone.onclick = null; // 移除 onclick 防递归
+  clone.style.pointerEvents = 'none';
+
+  overlay.appendChild(clone);
+
+  // 点击遮罩关闭
+  overlay.addEventListener('click', () => {
+    overlay.remove();
+  });
+
+  document.body.appendChild(overlay);
 }
 
 

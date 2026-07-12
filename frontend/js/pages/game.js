@@ -77,9 +77,6 @@ function scatterPositions(count) {
     pos.push({ left, top, rotation, scale, zIndex, zone: z >= 0 ? z : 0 });
   }
 
-  /* 整体再排序：区域之间有前后关系 */
-  // 不做全局重排，保持区域内自然叠放
-
   return pos;
 }
 
@@ -121,14 +118,14 @@ function renderGame() {
 
   el.innerHTML = `
     <div class="desk-bar">
-      <span class="day">📬 桌面 · 第 ${state.currentDay||0} 天</span>
+      <span class="day">桌面 · 第 ${state.currentDay||0} 天</span>
       <span class="hint">${has ? `桌上有 ${pcs.length} 封来信散落着` : '桌上还没有新的来信'}</span>
     </div>
     <div class="pc-stack">
       ${has ? cards : `
         <div class="stack-empty">
-          <h3>🕊️ 今天的桌面还没有新的明信片</h3>
-          <p>去「写信」或点 NEXT DAY 试试</p>
+          <h3>今天的桌面还没有新的明信片</h3>
+          <p>去[写信]或点 NEXT DAY 试试</p>
           <button class="btn btn-pri" style="margin-top:16px" onclick="App.navigate('write_letter')">写第一封信</button>
         </div>`}
     </div>
@@ -155,8 +152,8 @@ async function nextDay() {
     if (lr.ok) {
       const sr = await api.getState();
       if (sr.ok) { App.state.postcards = sr.data.postcards||[]; App.state.currentDay = sr.data.current_day||0; }
-      if (st) st.textContent = '📬 新的明信片落在桌上';
-      App.showToast('新的明信片 ✨');
+      if (st) st.textContent = '新的明信片落在桌上';
+      App.showToast('新的明信片已到达');
       if (lr.data) setTimeout(() => App.showPostcardDetail(lr.data), 500);
     } else {
       if (st) st.textContent = lr.error||'明信片没有送到';

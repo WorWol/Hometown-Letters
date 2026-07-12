@@ -9,7 +9,7 @@ function renderPostcards() {
 
   el.innerHTML = `
     <div class="pg-hd">
-      <h2>🖼️ 明信片收藏</h2>
+      <h2>明信片收藏</h2>
       <p>所有已经收到的明信片都在这里，像一本不断生长的画册。</p>
     </div>
     <div class="pc-g-hd">

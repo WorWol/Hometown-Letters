@@ -6,6 +6,9 @@ function renderAuthPage(mode) {
   el.innerHTML = `
     <div class="auth-container">
       <div class="auth-card">
+        <div class="auth-banner">
+          <div class="auth-envelope-icon"></div>
+        </div>
         <div class="auth-header">
           <h1>故乡来信</h1>
           <p>给过去的自己写一封信</p>
@@ -17,19 +20,35 @@ function renderAuthPage(mode) {
         <form class="auth-form" onsubmit="handleAuth(event, '${mode}')">
           <div class="auth-field">
             <label>用户名</label>
-            <input type="text" id="auth-username" class="inp" placeholder="请输入用户名" required minlength="2" maxlength="32">
+            <div class="auth-input-wrap">
+              <span class="auth-input-icon">@</span>
+              <input type="text" id="auth-username" class="inp" placeholder="请输入用户名" required minlength="2" maxlength="32">
+            </div>
           </div>
           <div class="auth-field">
             <label>密码</label>
-            <input type="password" id="auth-password" class="inp" placeholder="请输入密码" required minlength="4">
+            <div class="auth-input-wrap">
+              <span class="auth-input-icon">*</span>
+              <input type="password" id="auth-password" class="inp" placeholder="请输入密码" required minlength="4">
+            </div>
           </div>
           <div class="auth-err" id="auth-error" style="display:none;"></div>
-          <button type="submit" class="btn btn-pri auth-submit" id="auth-submit">
+          <button type="submit" class="auth-submit" id="auth-submit">
             ${isLogin ? '登 录' : '注 册'}
           </button>
         </form>
+        <div class="auth-demo">
+          <a onclick="skipAuth()">跳过登录，本地体验</a>
+          <p class="auth-demo-hint">（数据不会保存到云端）</p>
+        </div>
       </div>
     </div>`;
+}
+
+function skipAuth() {
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  App.init();
 }
 
 async function handleAuth(e, mode) {

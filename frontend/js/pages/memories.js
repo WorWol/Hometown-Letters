@@ -13,29 +13,29 @@ function renderMemories() {
 
   const profHTML = hasProf ? `
     <div class="profile">
-      <div class="s-tit">🧑 过去的我</div>
+      <div class="s-tit">过去的我</div>
       <p class="smr">${App._e(prof.summary||'有些印象还很轻，但已经在心里慢慢留下来了。')}</p>
-      ${places.length>0?`<div class="s-tit" style="margin-top:0;font-size:13.5px;">总会想起的地方</div>
+      ${places.length>0?`<div class="s-tit" style="margin-top:0;font-size:13px;">总会想起的地方</div>
         <div class="pg" style="margin-bottom:10px;">${places.slice(0,6).map(p=>`<span class="pi">${App._e(p.name||'')}</span>`).join('')}</div>`:''}
-      ${sensory.length>0?`<div class="s-tit" style="font-size:13.5px;">风、光和气味</div>
+      ${sensory.length>0?`<div class="s-tit" style="font-size:13px;">风、光和气味</div>
         <div class="pg" style="margin-bottom:10px;">${sensory.slice(0,6).map(s=>`<span class="pi pi-g">${App._e(s.name||'')}</span>`).join('')}</div>`:''}
-      ${identity.length>0?`<div class="s-tit" style="font-size:13.5px;">过去的我是个怎样的小孩</div>
-        ${identity.slice(0,4).map(id=>`<div class="pp">• ${_il(id.name||'')}</div>`).join('')}`:''}
-      ${recent.length>0?`<div class="s-tit" style="font-size:13.5px;margin-top:10px;">慢慢留了下来的</div>
-        ${recent.slice(0,4).map(r=>`<div class="pp">• 最近总会想起${App._e(r.name||'')}</div>`).join('')}`:''}
-    </div>` : `<div class="card" style="margin-bottom:14px;"><div class="card-ttl">🧑 过去的我</div>
+      ${identity.length>0?`<div class="s-tit" style="font-size:13px;">过去的我是个怎样的小孩</div>
+        ${identity.slice(0,4).map(id=>`<div class="pp">· ${_il(id.name||'')}</div>`).join('')}`:''}
+      ${recent.length>0?`<div class="s-tit" style="font-size:13px;margin-top:10px;">慢慢留了下来的</div>
+        ${recent.slice(0,4).map(r=>`<div class="pp">· 最近总会想起${App._e(r.name||'')}</div>`).join('')}`:''}
+    </div>` : `<div class="card" style="margin-bottom:14px;"><div class="card-ttl">过去的我</div>
       <p style="color:var(--dk-muted);font-size:13.5px;">写下一些记忆后，它会慢慢在这里浮现。</p></div>`;
 
   el.innerHTML = `
     <div class="pg-hd">
-      <h2>📖 记忆册</h2>
+      <h2>记忆册</h2>
       <p>${App.state.hometown?.hometownName?`· ${App._e(App.state.hometown.hometownName)} `:''}这里放着我想起来的一些事。</p>
     </div>
     <div class="mem-lay">
       <div class="mem-main">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
           <span style="font-size:14px;color:var(--dk-sec);font-weight:500;">${ms.length} 条记忆</span>
-          <button class="btn btn-pri" onclick="showMemForm()">✏️ 记下一件小事</button>
+          <button class="btn btn-pri" onclick="showMemForm()">记下一件小事</button>
         </div>
         ${ms.length===0?`<div class="card" style="text-align:center;padding:36px 20px;"><p style="color:var(--dk-muted);">还没有记下任何事。</p></div>`
           :`<div>${ms.map((m,i)=>`
@@ -70,10 +70,10 @@ function showMemDetail(m) {
   const e = document.querySelector('.modal'); if(e) e.remove();
   const o = document.createElement('div'); o.className='modal';
   o.onclick=e=>{if(e.target===o)o.remove();};
-  o.innerHTML = `<div class="modal-pnl"><div class="modal-hd"><h3>这段记忆</h3><button class="modal-cl" onclick="this.closest('.modal').remove()">×</button></div>
+  o.innerHTML = `<div class="modal-pnl"><div class="modal-hd"><h3>这段记忆</h3><button class="modal-cl" onclick="this.closest('.modal').remove()">x</button></div>
     <div class="modal-meta">${m.timestamp?new Date(m.timestamp).toLocaleString('zh-CN'):''}${m.analysisStatus?' · '+_as(m.analysisStatus):''}</div>
     <div class="modal-bd">${App._e(m.text)}</div>
-    ${m.summary?`<div class="modal-poem" style="font-style:normal;color:var(--dk-sec);">💭 ${App._e(m.summary)}</div>`:''}
+    ${m.summary?`<div class="modal-poem" style="font-style:normal;color:var(--dk-sec);">${App._e(m.summary)}</div>`:''}
     ${m.tags&&m.tags.length>0?`<div class="modal-tags">${m.tags.map(t=>`<span class="tag">${App._e(t)}</span>`).join('')}</div>`:''}
     <div class="modal-ft"><button class="btn btn-sec" onclick="this.closest('.modal').remove()">关闭</button></div></div>`;
   document.body.appendChild(o);
@@ -83,7 +83,7 @@ function showMemForm() {
   const e = document.querySelector('.modal'); if(e) e.remove();
   const o = document.createElement('div'); o.className='modal';
   o.onclick=e=>{if(e.target===o)o.remove();};
-  o.innerHTML = `<div class="modal-pnl"><div class="modal-hd"><h3>记下一件小事</h3><button class="modal-cl" onclick="this.closest('.modal').remove()">×</button></div>
+  o.innerHTML = `<div class="modal-pnl"><div class="modal-hd"><h3>记下一件小事</h3><button class="modal-cl" onclick="this.closest('.modal').remove()">x</button></div>
     <div style="padding:14px 24px 20px;">
       <div class="fg" style="margin-bottom:12px;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--dk-sec);">什么小事？</label>
         <textarea class="inp inp-ta" id="mem-text" rows="4" placeholder="今天想起了什么？某个地方、某种气味、某个瞬间……"></textarea></div>
@@ -111,7 +111,7 @@ async function saveMem() {
     if(r.ok) {
       const sr = await api.getState();
       if(sr.ok){App.state.memories=sr.data.memories||[];App.state.pastSelfProfile=sr.data.past_self_profile||{};}
-      document.querySelector('.modal')?.remove(); App.showToast('记忆已收好 🍃'); renderMemories();
+      document.querySelector('.modal')?.remove(); App.showToast('记忆已收好'); renderMemories();
     } else { s.textContent = r.error||'未能保存'; }
   } catch(e) { s.textContent = '网络错误'; console.error(e); }
   b.disabled = false;
