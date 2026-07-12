@@ -325,6 +325,8 @@ class LetterPipeline:
                 max_tokens=100,
             )
             spots = [s.strip() for s in raw.strip().split("\n") if s.strip()]
+            # 过滤掉和 core_place 相同的返回值
+            spots = [s for s in spots if s != place_name]
             if not spots:
                 return [place_name]
             return spots[:5]
