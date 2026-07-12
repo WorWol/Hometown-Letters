@@ -51,7 +51,8 @@ class PoemService:
         return self.llm.chat(SYSTEM_POEM, msg)
 
     def generate_title(self, landmark: dict, poem: str,
-                       analysis: dict | None = None) -> str:
+                       analysis: dict | None = None,
+                       user_context: dict | None = None) -> str:
         """生成明信片标题"""
         place = landmark.get("name", "故乡")
         msg = f"地点：{place}\n诗的内容：{poem}"
@@ -59,11 +60,14 @@ class PoemService:
             tone = analysis.get("emotional_tone", "")
             if tone:
                 msg += f"\n情感：{tone}"
+        if user_context and user_context.get("profile_summary"):
+            msg += f"\n写信人的性格画像：{user_context['profile_summary'][:100]}"
         return self.llm.chat(SYSTEM_TITLE, msg, temperature=0.7, max_tokens=30)
 
     def generate_body(self, landmark: dict, poem: str,
                       letter_text: str = "",
-                      analysis: dict | None = None) -> str:
+                      analysis: dict | None = None,
+                      user_context: dict | None = None) -> str:
         """生成明信片正文"""
         place = landmark.get("name", "故乡")
         msg = f"地点：{place}\n诗：{poem}"
@@ -73,6 +77,11 @@ class PoemService:
             tone = analysis.get("emotional_tone", "")
             if tone:
                 msg += f"\n情感基调：{tone}"
+        if user_context and user_context.get("profile_summary"):
+            msg += (
+                f"\n写信人的性格画像：{user_context['profile_summary'][:120]}\n"
+                f"请用符合这个性格的语气来写正文。"
+            )
         return self.llm.chat(SYSTEM_BODY, msg, temperature=0.8, max_tokens=150)
 
     def generate_image_prompt(

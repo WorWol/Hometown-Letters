@@ -37,12 +37,14 @@ class LetterPipeline:
         image_gen,
         selection_svc,
         poem_svc,
+        memory_svc,
     ):
         self.llm = llm
         self.search = search
         self.image_gen = image_gen
         self.selection_svc = selection_svc
         self.poem_svc = poem_svc
+        self.memory_svc = memory_svc
 
     async def process(
         self,
@@ -57,6 +59,9 @@ class LetterPipeline:
         try:
             hometown = await self._load_user_hometown(db, user)
 
+            # ── 加载用户记忆上下文 ──
+            user_context = await self.memory_svc.load_user_context(db, user.id)
+
             # ── 阶段 1：信件深度分析 ──
             logger.info("STAGE 1: letter analysis")
             from services.letter_analysis_service import LetterAnalysisService
@@ -66,6 +71,7 @@ class LetterPipeline:
                 place_hint=place_hint,
                 mood_hint=mood_hint,
                 hometown=hometown if hometown.get("city") else None,
+                user_context=user_context,
             )
             logger.info(
                 "analysis: core_place=%s tone=%s keywords=%s themes=%s",
@@ -124,8 +130,8 @@ class LetterPipeline:
             logger.info("STEP 5: poem/title/body (letter-informed)")
             simple_landmark = {"name": core_place, "description": ""}
             poem = self.poem_svc.generate_poem(simple_landmark, context_str, analysis)
-            title = self.poem_svc.generate_title(simple_landmark, poem, analysis)
-            body_text = self.poem_svc.generate_body(simple_landmark, poem, text, analysis)
+            title = self.poem_svc.generate_title(simple_landmark, poem, analysis, user_context)
+            body_text = self.poem_svc.generate_body(simple_landmark, poem, text, analysis, user_context)
 
             # ── 图像提示词 ──
             logger.info("STEP 6: image prompt (from analysis)")
@@ -226,6 +232,14 @@ class LetterPipeline:
             user.current_day = new_day
 
             await db.flush()
+
+            # ── 每 5 封信用 LLM 重建用户画像 ──
+            if new_day % 5 == 0:
+                logger.info("triggering profile build at day=%d", new_day)
+                try:
+                    await self.memory_svc.build_profile(db, user.id, self.llm)
+                except Exception as pe:
+                    logger.warning("profile build failed (non-fatal): %s", pe)
 
             logger.info("=== pipeline SUCCESS ===")
             return {

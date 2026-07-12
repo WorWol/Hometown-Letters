@@ -50,6 +50,7 @@ async def startup():
     from services.image_service import ImageService
     from services.selection_service import SelectionService
     from services.poem_service import PoemService
+    from services.memory_service import MemoryService
     from services.pipeline_service import LetterPipeline
 
     await init_db()
@@ -61,6 +62,7 @@ async def startup():
     image_gen = ImageService()
     selection_svc = SelectionService()
     poem_svc = PoemService(llm)
+    memory_svc = MemoryService()
 
     app.state.llm = llm
     app.state.search = search
@@ -72,6 +74,7 @@ async def startup():
         image_gen=image_gen,
         selection_svc=selection_svc,
         poem_svc=poem_svc,
+        memory_svc=memory_svc,
     )
 
 
