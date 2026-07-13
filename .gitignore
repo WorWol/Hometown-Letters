@@ -38,5 +38,8 @@ screenshots/
 .pytest_cache/
 test-results/
 
+# Docker volumes
+.docker/
+
 # Claude Code 本地设置
 .claude/settings.local.json

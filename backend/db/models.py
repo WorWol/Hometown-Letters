@@ -35,6 +35,10 @@ class User(Base):
                              cascade="all, delete-orphan")
     letters = relationship("Letter", back_populates="user",
                            cascade="all, delete-orphan")
+    letter_summaries = relationship("LetterSummary", back_populates="user",
+                                    cascade="all, delete-orphan")
+    letter_memories = relationship("LetterMemory", back_populates="user",
+                                   cascade="all, delete-orphan")
     memories = relationship("Memory", back_populates="user",
                             cascade="all, delete-orphan")
     past_self_profile = relationship("PastSelfProfile", back_populates="user",
@@ -138,6 +142,58 @@ class Letter(Base):
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", back_populates="letters")
+
+
+# ──────────── letter_summaries ────────────
+
+class LetterSummary(Base):
+    __tablename__ = "letter_summaries"
+    __table_args__ = (
+        UniqueConstraint("user_id", "batch_no"),
+        Index("ix_letter_summaries_user_batch", "user_id", "batch_no"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    batch_no = Column(Integer, nullable=False)
+    start_letter_id = Column(Integer, ForeignKey("letters.id"), nullable=False)
+    end_letter_id = Column(Integer, ForeignKey("letters.id"), nullable=False)
+    letter_count = Column(Integer, default=5, nullable=False)
+    summary_text = Column(Text, default="")
+    source_letter_ids = Column(JSON, default=list)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    user = relationship("User", back_populates="letter_summaries")
+    memory = relationship("LetterMemory", back_populates="summary", uselist=False,
+                          cascade="all, delete-orphan")
+
+
+# ──────────── letter_memories ────────────
+
+class LetterMemory(Base):
+    __tablename__ = "letter_memories"
+    __table_args__ = (
+        UniqueConstraint("summary_id"),
+        Index("ix_letter_memories_user_summary", "user_id", "summary_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    summary_id = Column(Integer, ForeignKey("letter_summaries.id"), unique=True, nullable=False)
+    memory_overview = Column(Text, default="")
+    emotion_signals = Column(JSON, default=list)
+    place_signals = Column(JSON, default=list)
+    theme_signals = Column(JSON, default=list)
+    people_signals = Column(JSON, default=list)
+    sensory_signals = Column(JSON, default=list)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    user = relationship("User", back_populates="letter_memories")
+    summary = relationship("LetterSummary", back_populates="memory")
 
 
 # ──────────── memories ────────────

@@ -1,16 +1,34 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-# 故乡来信 — 一键启动脚本
+# 故乡来信 — 一键启动脚本（Mac / Linux）
 # ═══════════════════════════════════════════════════════════════
-# 自动加载 .env 环境变量，激活虚拟环境，启动后端服务
+# 自动：创建虚拟环境 → 安装依赖 → 加载 .env → 启动服务
 #
 # 使用方法：
-#   1. 首次使用：  chmod +x start.sh
-#   2. 配置环境：  cp .env.example .env  然后编辑 .env
-#   3. 启动服务：  ./start.sh
+#   ./start.sh              # 一键启动
+#   ./start.sh --port 9090  # 指定端口
+#   ./start.sh --setup-only # 仅创建 venv + 安装依赖
+#
+# Windows 用户请使用: .\start.ps1 (PowerShell)
+# Docker 用户请使用:  docker compose up
+# 跨平台 Python:      python run.py
 # ═══════════════════════════════════════════════════════════════
 
 set -e
+
+# ── 解析命令行参数 ──
+HOST="0.0.0.0"
+PORT=8787
+SETUP_ONLY=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --port) PORT="$2"; shift 2 ;;
+        --host) HOST="$2"; shift 2 ;;
+        --setup-only) SETUP_ONLY=true; shift ;;
+        *) echo "未知参数: $1"; echo "用法: $0 [--port PORT] [--host HOST] [--setup-only]"; exit 1 ;;
+    esac
+done
 
 # 颜色
 GREEN='\033[0;32m'
@@ -22,6 +40,7 @@ NC='\033[0m'
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
 ENV_FILE="$PROJECT_DIR/.env"
+ENV_EXAMPLE="$PROJECT_DIR/.env.example"
 
 echo -e "${CYAN}══════════════════════════════════════${NC}"
 echo -e "${CYAN}  故乡来信 — 服务启动脚本${NC}"
@@ -35,8 +54,14 @@ if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
     set +a
 else
-    echo -e "${YELLOW}[!] 未找到 .env 文件，使用默认配置${NC}"
-    echo -e "${YELLOW}    建议: cp .env.example .env 并填入 API Key${NC}"
+    echo -e "${YELLOW}[!] 未找到 .env 文件${NC}"
+    if [ -f "$ENV_EXAMPLE" ]; then
+        cp "$ENV_EXAMPLE" "$ENV_FILE"
+        echo -e "${YELLOW}    已从 .env.example 复制模板${NC}"
+        echo -e "${YELLOW}    请编辑 .env 文件填入 API Key 后重新运行${NC}"
+    else
+        echo -e "${YELLOW}    使用默认配置（功能受限）${NC}"
+    fi
 fi
 
 # ── 2. 检查关键 API Key ──
@@ -80,15 +105,32 @@ echo ""
 echo -e "${CYAN}── 启动后端服务 ──${NC}"
 cd "$BACKEND_DIR"
 
-# ── 5. 检测 Python 虚拟环境 ──
-if [ -d "venv" ]; then
-    echo -e "${GREEN}[✓] 使用 venv 虚拟环境${NC}"
-    source venv/bin/activate
-elif [ -d ".venv" ]; then
-    echo -e "${GREEN}[✓] 使用 .venv 虚拟环境${NC}"
-    source .venv/bin/activate
+# ── 5. 检测/创建 Python 虚拟环境 ──
+VENV_DIR=""
+if [ -d "$BACKEND_DIR/venv" ]; then
+    VENV_DIR="$BACKEND_DIR/venv"
+elif [ -d "$BACKEND_DIR/.venv" ]; then
+    VENV_DIR="$BACKEND_DIR/.venv"
+fi
+
+if [ -n "$VENV_DIR" ]; then
+    echo -e "${GREEN}[✓] 使用虚拟环境: $VENV_DIR${NC}"
 else
-    echo -e "${YELLOW}[!] 未检测到虚拟环境，使用系统 Python${NC}"
+    echo -e "${YELLOW}[!] 未检测到虚拟环境，正在创建...${NC}"
+    VENV_DIR="$BACKEND_DIR/.venv"
+    python3 -m venv "$VENV_DIR" 2>/dev/null || python -m venv "$VENV_DIR" 2>/dev/null || {
+        echo -e "${RED}[✗] 虚拟环境创建失败，请确认 Python 3.10+ 已安装${NC}"
+        exit 1
+    }
+    echo -e "${GREEN}[✓] 虚拟环境创建成功: $VENV_DIR${NC}"
+fi
+
+# 激活虚拟环境
+if [ -f "$VENV_DIR/bin/activate" ]; then
+    source "$VENV_DIR/bin/activate"
+else
+    echo -e "${RED}[✗] 无法激活虚拟环境: $VENV_DIR${NC}"
+    exit 1
 fi
 
 # ── 6. 安装依赖 ──
@@ -99,8 +141,14 @@ pip install -q -r requirements.txt 2>/dev/null || {
 }
 
 # ── 7. 启动 ──
-HOST="${HOST:-0.0.0.0}"
-PORT="${PORT:-8787}"
+if $SETUP_ONLY; then
+    echo ""
+    echo -e "${GREEN}[✓] 环境设置完成！${NC}"
+    echo -e "${GREEN}    虚拟环境: $VENV_DIR${NC}"
+    echo -e "${GREEN}    启动命令: ./start.sh${NC}"
+    exit 0
+fi
+
 echo -e "${GREEN}[✓] 启动服务: http://${HOST}:${PORT}${NC}"
 echo -e "${GREEN}[✓] API 文档: http://${HOST}:${PORT}/docs${NC}"
 echo ""

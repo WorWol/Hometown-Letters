@@ -60,6 +60,10 @@ class PoemService:
             tone = analysis.get("emotional_tone", "")
             if tone:
                 msg += f"\n情感：{tone}"
+        if user_context:
+            summaries = user_context.get("recent_summaries", [])
+            if summaries:
+                msg += f"\n最近阶段总结：{'；'.join(s['summary_text'][:60] for s in summaries if s.get('summary_text'))}"
         if user_context and user_context.get("profile_summary"):
             msg += f"\n写信人的性格画像：{user_context['profile_summary'][:100]}"
         return self.llm.chat(SYSTEM_TITLE, msg, temperature=0.7, max_tokens=30)
@@ -77,6 +81,15 @@ class PoemService:
             tone = analysis.get("emotional_tone", "")
             if tone:
                 msg += f"\n情感基调：{tone}"
+        if user_context:
+            summaries = user_context.get("recent_summaries", [])
+            if summaries:
+                msg += f"\n最近阶段总结：{'；'.join(s['summary_text'][:70] for s in summaries if s.get('summary_text'))}"
+            memories = user_context.get("recent_memories", [])
+            if memories:
+                overview = [m.get("memory_overview", "")[:50] for m in memories if m.get("memory_overview")]
+                if overview:
+                    msg += f"\n最近阶段记忆：{'；'.join(overview)}"
         if user_context and user_context.get("profile_summary"):
             msg += (
                 f"\n写信人的性格画像：{user_context['profile_summary'][:120]}\n"

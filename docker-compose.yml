@@ -1,0 +1,53 @@
+# ═══════════════════════════════════════════════════════════════
+# 故乡来信 — Docker Compose 开发环境
+# ═══════════════════════════════════════════════════════════════
+# 前置条件：安装 Docker Desktop
+#   - Mac:     https://docs.docker.com/desktop/setup/install/mac-install/
+#   - Windows: https://docs.docker.com/desktop/setup/install/windows-install/
+#   - Linux:   https://docs.docker.com/desktop/setup/install/linux-install/
+#
+# 使用方式：
+#   cp .env.example .env        # 首次：配置环境变量
+#   vim .env                    # 填入你的 API Key
+#   docker compose up           # 一键启动（热重载）
+#   docker compose up -d        # 后台运行
+#   docker compose down         # 停止
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hometown-letters
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    volumes:
+      # 代码热重载：修改代码自动生效
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+      # 持久化数据（SQLite 数据库放在 backend/data/）
+      - app-data:/app/backend/data
+      # 持久化生成的图片
+      - app-images:/app/backend/generated_images
+      # 忽略容器内的 __pycache__，避免权限问题
+      - /app/backend/__pycache__
+    command: >
+      uvicorn main:app
+      --host 0.0.0.0
+      --port 8787
+      --reload
+      --reload-dir /app/backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/docs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  app-data:
+  app-images:

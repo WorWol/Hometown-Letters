@@ -267,13 +267,12 @@ class LetterPipeline:
 
             await db.flush()
 
-            # ── 每 5 封信用 LLM 重建用户画像 ──
-            if new_day % 5 == 0:
-                logger.info("triggering profile build at day=%d", new_day)
-                try:
-                    await self.memory_svc.build_profile(db, user.id, self.llm)
-                except Exception as pe:
-                    logger.warning("profile build failed (non-fatal): %s", pe)
+            # ── 每个用户每满 5 封信，落一批 summary/memory，并更新长期画像 ──
+            try:
+                await self.memory_svc.maybe_build_batch_memory(db, user.id, self.llm)
+                await self.memory_svc.rebuild_profile_from_batches(db, user.id, self.llm)
+            except Exception as pe:
+                logger.warning("batch memory/profile rebuild failed (non-fatal): %s", pe)
 
             logger.info("=== pipeline SUCCESS ===")
             return {

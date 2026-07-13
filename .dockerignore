@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# 数据库（由 volume 管理）
+backend/data/*.db
+
+# 日志
+backend/logs/*.log
+backend/logs/*.log.*
+
+# 生成的图片缓存（由 volume 管理）
+backend/generated_images/
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 截图/归档
+archive/
+screenshots/
+*.png
+*.jpg
+
+# 环境变量
+.env
+
+# Claude
+.claude/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml

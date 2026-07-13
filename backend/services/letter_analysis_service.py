@@ -146,15 +146,8 @@ class LetterAnalysisService:
     @staticmethod
     def _format_user_context(user_context: dict) -> str:
         """将 user_context 格式化为注入 prompt 的文本"""
-        parts = []
-        if user_context.get("profile_summary"):
-            parts.append(f"用户画像：{user_context['profile_summary']}")
-        letters = user_context.get("recent_letters", [])
-        if letters:
-            parts.append("最近写过的信：")
-            for i, lt in enumerate(letters, 1):
-                parts.append(f"  {i}. {lt[:200]}")
-        return "\n".join(parts) if parts else ""
+        from services.memory_service import MemoryService
+        return MemoryService().format_context_for_prompt(user_context)
 
     def _parse_json(self, raw: str) -> dict[str, Any]:
         clean = raw.strip()
