@@ -103,7 +103,7 @@ async function handleAuth(e, mode) {
       Auth.setToken(r.data.token);
       Auth.setUser({ id: r.data.user_id, username });
       showAppAfterAuth();
-    } else if (r.ok === false && r.detail) {
+    } else if (r.detail) {
       showAuthError(r.detail);
     } else {
       showAuthError('操作失败，请重试');

@@ -1,4 +1,4 @@
-# ═══════════════════════════════════════════════════════════════
+﻿# ═══════════════════════════════════════════════════════════════
 # 故乡来信 — Windows PowerShell 一键启动脚本
 # ═══════════════════════════════════════════════════════════════
 # 使用方法：
@@ -60,8 +60,9 @@ try {
 }
 
 # ── 2. 虚拟环境 ──
-$pythonExe = Join-Path $VenvDir "Scripts" "python.exe"
-$pipExe = Join-Path $VenvDir "Scripts" "pip.exe"
+$venvScriptsDir = Join-Path $VenvDir "Scripts"
+$pythonExe = Join-Path $venvScriptsDir "python.exe"
+$pipExe = Join-Path $venvScriptsDir "pip.exe"
 
 if (Test-Path $pythonExe) {
     Write-Green "[✓] 虚拟环境已存在: $VenvDir"
@@ -78,10 +79,14 @@ if (Test-Path $pythonExe) {
 # ── 3. 安装依赖 ──
 Write-Cyan "[…] 安装依赖..."
 $requirementsFile = Join-Path $BackendDir "requirements.txt"
-& $pipExe install -r $requirementsFile 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
+$previousErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+& $pythonExe -m pip install -r $requirementsFile *> $null
+$installExitCode = $LASTEXITCODE
+$ErrorActionPreference = $previousErrorAction
+if ($installExitCode -ne 0) {
     Write-Red "[✗] 依赖安装失败，正在重试（显示详细输出）..."
-    & $pipExe install -r $requirementsFile
+    & $pythonExe -m pip install -r $requirementsFile
     if ($LASTEXITCODE -ne 0) {
         Write-Red "[✗] 依赖安装失败"
         exit 1

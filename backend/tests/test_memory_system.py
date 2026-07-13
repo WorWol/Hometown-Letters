@@ -93,6 +93,14 @@ async def _make_db() -> AsyncSession:
     return maker()
 
 
+async def _close_db(db: AsyncSession) -> None:
+    """关闭测试会话及其临时引擎，避免连接泄漏警告。"""
+    engine = db.bind
+    await db.close()
+    if engine is not None:
+        await engine.dispose()
+
+
 async def _make_user(db: AsyncSession, username: str = "test", day: int = 0) -> User:
     user = User(username=username, hashed_password="x", current_day=day)
     db.add(user)
@@ -141,6 +149,7 @@ async def test_batch_trigger_exactly_on_five():
     check("memory数量", len(memories), 1)
     if memories:
         check_contains("有情绪信号", json.dumps(memories[0].emotion_signals, ensure_ascii=False), "怀念")
+    await _close_db(db)
 
 
 async def test_batch_skip_on_non_multiple():
@@ -157,6 +166,7 @@ async def test_batch_skip_on_non_multiple():
     await MemoryService().maybe_build_batch_memory(db, user.id, llm)
     result = await db.execute(select(LetterSummary).where(LetterSummary.user_id == user.id))
     check("summary数量=0", len(result.scalars().all()), 0)
+    await _close_db(db)
 
 
 async def test_batch_idempotent():
@@ -176,6 +186,7 @@ async def test_batch_idempotent():
 
     result = await db.execute(select(LetterSummary).where(LetterSummary.user_id == user.id))
     check("仍然只有1条summary", len(result.scalars().all()), 1)
+    await _close_db(db)
 
 
 async def test_context_reads_summary_memory_and_tail():
@@ -205,6 +216,7 @@ async def test_context_reads_summary_memory_and_tail():
     check_contains("含阶段总结", formatted, "最近阶段总结")
     check_contains("含阶段记忆", formatted, "最近阶段记忆")
     check_contains("含尾部信件", formatted, "当前阶段尚未归档的来信")
+    await _close_db(db)
 
 
 async def test_profile_rebuilt_from_batches():
@@ -229,6 +241,7 @@ async def test_profile_rebuilt_from_batches():
     if profile:
         check_contains("画像summary有内容", profile.summary, "校园")
         check_contains("recent_memory_signals有内容", json.dumps(profile.recent_memory_signals, ensure_ascii=False), "校园")
+    await _close_db(db)
 
 
 async def main():

@@ -6,9 +6,11 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-# 使用备用 key（已充值）
-API_KEY = "ark-88e5417b-2523-4d06-83cf-e8878124c866-d8a25"
-BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
+# 凭据只允许从环境变量读取，禁止把真实 Key 写进仓库。
+API_KEY = os.environ.get("VOLC_API_KEY", "")
+BASE_URL = os.environ.get(
+    "VOLC_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"
+)
 
 # 候选生图模型
 CANDIDATE_MODELS = [
@@ -104,6 +106,8 @@ async def download_image(url: str, filepath: Path) -> bool:
 
 async def test_all():
     """测试所有模型 × prompt 组合"""
+    if not API_KEY:
+        raise RuntimeError("未配置 VOLC_API_KEY，无法运行真实生图测试")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     results = []

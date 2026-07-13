@@ -512,8 +512,6 @@ img {
   background:
     radial-gradient(ellipse at 78% 18%, rgba(255,240,200,0.3) 0%, transparent 60%),
     linear-gradient(178deg, #8B6E5A 0%, #7A5D4A 30%, #6B4E3A 60%, #7A5D4A 100%);
-  display: flex;
-  flex-direction: column;
   gap: 22px;
 }
 
