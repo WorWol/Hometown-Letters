@@ -43,6 +43,10 @@ class User(Base):
                             cascade="all, delete-orphan")
     past_self_profile = relationship("PastSelfProfile", back_populates="user",
                                      uselist=False, cascade="all, delete-orphan")
+    sent_mails = relationship("Mail", foreign_keys="Mail.sender_id",
+                              back_populates="sender", cascade="all, delete-orphan")
+    received_mails = relationship("Mail", foreign_keys="Mail.recipient_id",
+                                  back_populates="recipient", cascade="all, delete-orphan")
 
 
 # ──────────── hometowns ────────────
@@ -232,3 +236,30 @@ class PastSelfProfile(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User", back_populates="past_self_profile")
+
+
+# ──────────── mails ────────────
+
+class Mail(Base):
+    __tablename__ = "mails"
+    __table_args__ = (
+        Index("ix_mails_recipient_time", "recipient_id", "sent_at"),
+        Index("ix_mails_sender_time", "sender_id", "sent_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    recipient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String(256), default="")
+    content = Column(Text, default="")
+    attached_postcard_id = Column(Integer, ForeignKey("postcards.id"), nullable=True)
+    attached_letter_id = Column(Integer, ForeignKey("letters.id"), nullable=True)
+    is_read = Column(Boolean, default=False, nullable=False)
+    sender_deleted = Column(Boolean, default=False, nullable=False)
+    recipient_deleted = Column(Boolean, default=False, nullable=False)
+    sent_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    sender = relationship("User", foreign_keys=[sender_id], back_populates="sent_mails")
+    recipient = relationship("User", foreign_keys=[recipient_id], back_populates="received_mails")
+    attached_postcard = relationship("Postcard", foreign_keys=[attached_postcard_id])
+    attached_letter = relationship("Letter", foreign_keys=[attached_letter_id])

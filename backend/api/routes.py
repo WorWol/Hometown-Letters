@@ -9,10 +9,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from auth.dependencies import get_current_user
 from db.database import get_db
-from db.models import Hometown, Letter, Memory, PastSelfProfile, Postcard, User
+from db.models import Hometown, Letter, Mail, Memory, PastSelfProfile, Postcard, User
 from services import image_storage
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,14 @@ class MemorySaveReq(BaseModel):
     text: str
     tags: list[str] = []
     place_hint: str = ""
+
+
+class MailSendReq(BaseModel):
+    recipient_username: str
+    title: str = ""
+    content: str
+    attached_postcard_id: int | None = None
+    attached_letter_id: int | None = None
 
 
 # ──────────── DI 依赖 ────────────
@@ -355,6 +364,342 @@ async def get_community_letters(
             "myLetterCount": my_count,
         },
     }
+
+
+# ──────────── 辅助函数 ────────────
+
+def _build_postcard_dict(pc: Postcard) -> dict:
+    """将 Postcard ORM 对象转换为前端使用的字典格式"""
+    image_url = ""
+    if pc.image_path:
+        image_url = image_storage.get_image_url(pc.image_path)
+    return {
+        "id": str(pc.id),
+        "title": pc.title,
+        "body": pc.body,
+        "poem": pc.poem,
+        "place": pc.place,
+        "landmarkId": pc.landmark_id,
+        "landmarkDescription": pc.landmark_description,
+        "mood": pc.mood,
+        "imageUrl": image_url,
+        "imagePrompt": pc.image_prompt,
+        "searchImageUrls": pc.search_image_urls,
+        "createdAt": pc.created_at.isoformat() if pc.created_at else "",
+        "letterText": pc.letter_text,
+        "tags": pc.tags,
+        "usedFallback": pc.used_fallback,
+    }
+
+
+def _build_letter_dict(lt: Letter) -> dict:
+    """将 Letter ORM 对象转换为前端使用的字典格式"""
+    return {
+        "id": f"ltr-{lt.id}",
+        "text": lt.text,
+        "place": lt.place,
+        "mood": lt.mood,
+        "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+    }
+
+
+def _build_mail_dict(mail: Mail) -> dict:
+    """将 Mail ORM 对象转换为前端使用的字典格式"""
+    result = {
+        "id": str(mail.id),
+        "senderId": mail.sender_id,
+        "senderUsername": mail.sender.username if mail.sender else "",
+        "recipientId": mail.recipient_id,
+        "recipientUsername": mail.recipient.username if mail.recipient else "",
+        "title": mail.title,
+        "content": mail.content,
+        "isRead": mail.is_read,
+        "sentAt": mail.sent_at.isoformat() if mail.sent_at else "",
+    }
+    if mail.attached_postcard:
+        result["attachedPostcard"] = _build_postcard_dict(mail.attached_postcard)
+    else:
+        result["attachedPostcard"] = None
+    if mail.attached_letter:
+        result["attachedLetter"] = _build_letter_dict(mail.attached_letter)
+    else:
+        result["attachedLetter"] = None
+    return result
+
+
+# ──────────── 邮件端点 ────────────
+
+@router.post("/mail/send")
+async def send_mail(
+    body: MailSendReq,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """向其他用户邮寄信件，可附带明信片或历史信件"""
+    # 查找收件人
+    result = await db.execute(
+        select(User).where(User.username == body.recipient_username)
+    )
+    recipient = result.scalar_one_or_none()
+    if recipient is None:
+        return {"ok": False, "error": "收件人不存在"}
+
+    # 不能给自己发信
+    if recipient.id == user.id:
+        return {"ok": False, "error": "不能给自己寄信"}
+
+    # 附带资源归属校验
+    if body.attached_postcard_id is not None:
+        pc_result = await db.execute(
+            select(Postcard).where(
+                Postcard.id == body.attached_postcard_id,
+                Postcard.user_id == user.id,
+            )
+        )
+        if pc_result.scalar_one_or_none() is None:
+            return {"ok": False, "error": "附带明信片不存在或不属于你"}
+
+    if body.attached_letter_id is not None:
+        lt_result = await db.execute(
+            select(Letter).where(
+                Letter.id == body.attached_letter_id,
+                Letter.user_id == user.id,
+            )
+        )
+        if lt_result.scalar_one_or_none() is None:
+            return {"ok": False, "error": "附带信件不存在或不属于你"}
+
+    mail = Mail(
+        sender_id=user.id,
+        recipient_id=recipient.id,
+        title=body.title,
+        content=body.content,
+        attached_postcard_id=body.attached_postcard_id,
+        attached_letter_id=body.attached_letter_id,
+    )
+    db.add(mail)
+    await db.flush()
+
+    return {
+        "ok": True,
+        "data": {
+            "id": str(mail.id),
+            "sentAt": mail.sent_at.isoformat() if mail.sent_at else "",
+        },
+    }
+
+
+@router.get("/mail/inbox")
+async def get_inbox(
+    page: int = 1,
+    page_size: int = 20,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取收件箱 — 收到的信件列表"""
+    page = max(1, page)
+    page_size = max(1, min(page_size, 50))
+
+    # 未读数
+    from sqlalchemy import func as sa_func
+    unread_result = await db.execute(
+        select(sa_func.count(Mail.id)).where(
+            Mail.recipient_id == user.id,
+            Mail.is_read == False,
+            Mail.recipient_deleted == False,
+        )
+    )
+    unread_count = unread_result.scalar() or 0
+
+    # 收件列表
+    offset = (page - 1) * page_size
+    result = await db.execute(
+        select(Mail)
+        .options(
+            selectinload(Mail.sender),
+            selectinload(Mail.recipient),
+            selectinload(Mail.attached_postcard),
+            selectinload(Mail.attached_letter),
+        )
+        .where(Mail.recipient_id == user.id, Mail.recipient_deleted == False)
+        .order_by(Mail.sent_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    mails = [_build_mail_dict(m) for m in result.scalars().all()]
+
+    # 总数
+    total_result = await db.execute(
+        select(sa_func.count(Mail.id)).where(
+            Mail.recipient_id == user.id,
+            Mail.recipient_deleted == False,
+        )
+    )
+    total = total_result.scalar() or 0
+
+    return {
+        "ok": True,
+        "data": {
+            "mails": mails,
+            "unreadCount": unread_count,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+        },
+    }
+
+
+@router.get("/mail/outbox")
+async def get_outbox(
+    page: int = 1,
+    page_size: int = 20,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取发件箱 — 发出的信件列表"""
+    page = max(1, page)
+    page_size = max(1, min(page_size, 50))
+
+    offset = (page - 1) * page_size
+    result = await db.execute(
+        select(Mail)
+        .options(
+            selectinload(Mail.sender),
+            selectinload(Mail.recipient),
+            selectinload(Mail.attached_postcard),
+            selectinload(Mail.attached_letter),
+        )
+        .where(Mail.sender_id == user.id, Mail.sender_deleted == False)
+        .order_by(Mail.sent_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    mails = [_build_mail_dict(m) for m in result.scalars().all()]
+
+    from sqlalchemy import func as sa_func
+    total_result = await db.execute(
+        select(sa_func.count(Mail.id)).where(
+            Mail.sender_id == user.id,
+            Mail.sender_deleted == False,
+        )
+    )
+    total = total_result.scalar() or 0
+
+    return {
+        "ok": True,
+        "data": {
+            "mails": mails,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+        },
+    }
+
+
+@router.get("/mail/{mail_id}")
+async def get_mail_detail(
+    mail_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取单封信件的详情"""
+    result = await db.execute(
+        select(Mail)
+        .options(
+            selectinload(Mail.sender),
+            selectinload(Mail.recipient),
+            selectinload(Mail.attached_postcard),
+            selectinload(Mail.attached_letter),
+        )
+        .where(Mail.id == mail_id)
+    )
+    mail = result.scalar_one_or_none()
+    if mail is None:
+        return {"ok": False, "error": "信件不存在"}
+
+    # 只有发件人或收件人能查看
+    if mail.sender_id != user.id and mail.recipient_id != user.id:
+        return {"ok": False, "error": "无权查看此信件"}
+
+    return {"ok": True, "data": _build_mail_dict(mail)}
+
+
+@router.put("/mail/{mail_id}/read")
+async def mark_mail_read(
+    mail_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """将信件标记为已读"""
+    result = await db.execute(
+        select(Mail).where(Mail.id == mail_id)
+    )
+    mail = result.scalar_one_or_none()
+    if mail is None:
+        return {"ok": False, "error": "信件不存在"}
+
+    # 只有收件人可以标记已读
+    if mail.recipient_id != user.id:
+        return {"ok": False, "error": "只有收件人可以标记已读"}
+
+    mail.is_read = True
+    await db.flush()
+
+    return {"ok": True, "data": {"id": str(mail.id), "isRead": True}}
+
+
+@router.delete("/mail/{mail_id}")
+async def delete_mail(
+    mail_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除信件（软删除）"""
+    result = await db.execute(
+        select(Mail).where(Mail.id == mail_id)
+    )
+    mail = result.scalar_one_or_none()
+    if mail is None:
+        return {"ok": False, "error": "信件不存在"}
+
+    # 只有发件人或收件人可以删除
+    if mail.sender_id != user.id and mail.recipient_id != user.id:
+        return {"ok": False, "error": "无权删除此信件"}
+
+    if mail.sender_id == user.id:
+        mail.sender_deleted = True
+    if mail.recipient_id == user.id:
+        mail.recipient_deleted = True
+
+    await db.flush()
+
+    return {"ok": True, "data": {"id": str(mail.id)}}
+
+
+@router.get("/users/lookup")
+async def lookup_users(
+    q: str = "",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按用户名搜索其他用户（用于选择收件人）"""
+    if not q or len(q.strip()) < 1:
+        return {"ok": True, "data": {"users": []}}
+
+    result = await db.execute(
+        select(User)
+        .where(
+            User.username.contains(q.strip()),
+            User.id != user.id,
+        )
+        .limit(20)
+    )
+    users = [
+        {"id": u.id, "username": u.username}
+        for u in result.scalars().all()
+    ]
+
+    return {"ok": True, "data": {"users": users}}
 
 
 @router.get("/image/{image_id}")

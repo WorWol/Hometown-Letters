@@ -84,6 +84,22 @@ class LetterPipeline:
             # 直接用 core_place 或 place_hint 作为地点
             core_place = analysis.get("core_place", "") or place_hint or "故乡"
 
+            # ── 先保存信件（在昂贵的 LLM 调用之前，保证不丢） ──
+            effective_mood = mood_hint or analysis.get("emotional_tone", "平静")
+            new_day = user.current_day + 1
+
+            letter = Letter(
+                user_id=user.id,
+                text=text,
+                place=core_place,
+                mood=effective_mood,
+                timestamp=datetime.now(timezone.utc),
+            )
+            db.add(letter)
+            user.current_day = new_day
+            await db.flush()
+            logger.info("letter saved: id=%s day=%s", letter.id, new_day)
+
             # ── 图片搜索（记忆点增强）──
             logger.info("STEP 2: search images (enriched with memorable spots)")
             # 获取原始搜索关键词
@@ -224,7 +240,6 @@ class LetterPipeline:
             # ── 组装明信片 ──
             logger.info("STEP 8: assemble postcard")
             now_ts = datetime.now(timezone.utc).isoformat()
-            new_day = user.current_day + 1
 
             postcard = Postcard(
                 user_id=user.id,
@@ -234,7 +249,7 @@ class LetterPipeline:
                 place=core_place,
                 landmark_id=None,
                 landmark_description="",
-                mood=mood_hint or analysis.get("emotional_tone", "平静"),
+                mood=effective_mood,
                 image_path=pc_id,
                 image_prompt=image_prompt,
                 search_image_urls=filtered_urls,
@@ -249,22 +264,9 @@ class LetterPipeline:
                     local_image_url = filtered_urls[0]
                 postcard.used_fallback = True
 
-            # ── 保存 ──
-            logger.info("STEP 9: save to DB")
+            # ── 保存明信片 ──
+            logger.info("STEP 9: save postcard")
             db.add(postcard)
-
-            effective_mood = mood_hint or analysis.get("emotional_tone", "平静")
-            letter = Letter(
-                user_id=user.id,
-                text=text,
-                place=core_place,
-                mood=effective_mood,
-                timestamp=datetime.now(timezone.utc),
-            )
-            db.add(letter)
-
-            user.current_day = new_day
-
             await db.flush()
 
             # ── 每个用户每满 5 封信，落一批 summary/memory，并更新长期画像 ──
