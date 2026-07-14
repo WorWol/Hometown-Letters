@@ -95,4 +95,51 @@ const api = {
     return this._fetchAuth('/api/postcards');
   },
 
+  // ── 社区信件 ──
+
+  async getCommunityLetters(limit = 5) {
+    return this._fetchAuth(`/api/community-letters?limit=${limit}`);
+  },
+
+  // ── 用户查找 ──
+
+  async lookupUsers(query) {
+    return this._fetchAuth(`/api/users/lookup?q=${encodeURIComponent(query)}`);
+  },
+
+  // ── 邮件 ──
+
+  async sendMail(recipientUsername, title, content, attachedPostcardId = null, attachedLetterId = null) {
+    return this._fetchAuth('/api/mail/send', {
+      method: 'POST',
+      body: JSON.stringify({
+        recipient_username: recipientUsername,
+        title: title,
+        content: content,
+        attached_postcard_id: attachedPostcardId,
+        attached_letter_id: attachedLetterId,
+      }),
+    });
+  },
+
+  async getInbox(page = 1, pageSize = 20) {
+    return this._fetchAuth(`/api/mail/inbox?page=${page}&page_size=${pageSize}`);
+  },
+
+  async getOutbox(page = 1, pageSize = 20) {
+    return this._fetchAuth(`/api/mail/outbox?page=${page}&page_size=${pageSize}`);
+  },
+
+  async getMailDetail(mailId) {
+    return this._fetchAuth(`/api/mail/${mailId}`);
+  },
+
+  async markMailRead(mailId) {
+    return this._fetchAuth(`/api/mail/${mailId}/read`, { method: 'PUT' });
+  },
+
+  async deleteMail(mailId) {
+    return this._fetchAuth(`/api/mail/${mailId}`, { method: 'DELETE' });
+  },
+
 };
