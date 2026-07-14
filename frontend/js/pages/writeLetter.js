@@ -75,9 +75,6 @@ function renderWriteLetter() {
           : ls.map(_renderRecentItem).join('')}
       </div>
 
-      <!-- 社区灵感（新用户可见） -->
-      <div class="community-letters" id="community-letters"></div>
-
     </div>
 
     <!-- 邮箱 -->
@@ -97,11 +94,6 @@ function renderWriteLetter() {
     const ta = document.getElementById('env-textarea');
     if (ta) ta.focus({ preventScroll: true });
   }, 100);
-
-  // 新用户：加载社区信件灵感
-  if (ls.length === 0) {
-    _loadCommunityLetters();
-  }
 }
 
 function _renderButtons() {
@@ -417,69 +409,6 @@ function enlargeEnvelope() {
   });
 
   document.body.appendChild(overlay);
-}
-
-
-/* ================ 社区信件灵感 ================ */
-
-async function _loadCommunityLetters() {
-  const container = document.getElementById('community-letters');
-  if (!container) return;
-
-  container.innerHTML = '<div class="community-loading">正在加载写作灵感……</div>';
-
-  try {
-    const r = await api.getCommunityLetters(6);
-    if (!r.ok || !r.data) {
-      container.innerHTML = '';
-      return;
-    }
-    _renderCommunityLetters(container, r.data.letters);
-  } catch (e) {
-    console.warn('[community] load failed:', e);
-    container.innerHTML = '';
-  }
-}
-
-function _renderCommunityLetters(container, letters) {
-  if (!letters || letters.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
-
-  container.innerHTML = `
-    <div class="community-hd">
-      <span>来自其他故乡的来信</span>
-      <button class="community-refresh" onclick="_loadCommunityLetters()" title="换一批">↻</button>
-    </div>
-    <div class="community-grid">
-      ${letters.map((lt, i) => `
-        <div class="community-card" onclick="fillFromCommunity('${App._e(lt.text).replace(/'/g, "\\'")}', '${App._e(lt.place||'').replace(/'/g, "\\'")}', '${App._e(lt.mood||'').replace(/'/g, "\\'")}')">
-          <div class="community-card-text">${App._e(lt.text.length > 80 ? lt.text.slice(0, 80) + '…' : lt.text)}</div>
-          <div class="community-card-meta">
-            ${lt.place ? `<span>📍 ${App._e(lt.place)}</span>` : ''}
-            ${lt.mood ? `<span>· ${App._e(lt.mood)}</span>` : ''}
-            ${lt.hometown ? `<span class="community-card-from">· 来自${App._e(lt.hometown.city||lt.hometown.province||'')}</span>` : ''}
-          </div>
-        </div>
-      `).join('')}
-    </div>`;
-}
-
-function fillFromCommunity(text, place, mood) {
-  const ta = document.getElementById('env-textarea');
-  const placeInp = document.getElementById('env-place');
-  const moodInp = document.getElementById('env-mood');
-
-  if (ta) { ta.value = text; ta.focus(); }
-  if (placeInp && place) placeInp.value = place;
-  if (moodInp && mood) moodInp.value = mood;
-
-  App.showToast('已填入灵感，修改后装入信封吧', 2000);
-
-  // 滚动到 textarea
-  const card = document.getElementById('env-letter-card');
-  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 
