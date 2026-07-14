@@ -2,65 +2,70 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2d1b12">
   <title>故乡来信 · Hometown Letters</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/zpix@3.1.1/dist/Zpix.min.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="ui-v2">
+  <div class="room-backdrop" aria-hidden="true"></div>
+  <div class="paper-overlay" aria-hidden="true"></div>
 
-  <!-- 纸张纹理覆盖层 -->
-  <div class="paper-overlay"></div>
-
-  <!-- ===== 认证门控 ===== -->
   <div id="auth-gate">
     <div class="page active" id="page-auth"></div>
   </div>
 
-  <div id="app">
-
-    <!-- ===== 顶栏 (Godot Main HeaderPanel) ===== -->
-    <div class="header">
-      <div class="header-inner">
-        <button class="header-mailbox" onclick="App.navigate('game')" title="回到桌面">
-          <img src="assets/icon_mailbox.png" alt="信箱">
-          <span class="mailbox-label">桌面</span>
+  <div id="app" class="workbench-shell">
+    <aside class="side-rail" aria-label="故乡来信主导航">
+      <button class="rail-brand" onclick="App.navigate('game')" title="回到桌面">
+        <span class="brand-mark">乡</span>
+        <span class="brand-copy"><strong>故乡来信</strong><small>Hometown Letters</small></span>
+      </button>
+      <nav class="rail-nav" aria-label="页面导航">
+        <button class="rail-item nav-btn" data-page="game" onclick="App.navigate('game')">
+          <img src="assets/ui-v2/nav-desk.png" alt=""><span>桌面</span>
         </button>
-        <div class="header-mid">
-          <h1>故乡来信</h1>
-          <p>桌上的每一张明信片，都来自过去留下的自己。</p>
+        <button class="rail-item nav-btn" data-page="write_letter" onclick="App.navigate('write_letter')">
+          <img src="assets/ui-v2/nav-letter.png" alt=""><span>写信</span>
+        </button>
+        <button class="rail-item nav-btn" data-page="postcards" onclick="App.navigate('postcards')">
+          <img src="assets/ui-v2/nav-postcards.png" alt=""><span>明信片</span>
+        </button>
+        <button class="rail-item nav-btn" data-page="memories" onclick="App.navigate('memories')">
+          <img src="assets/ui-v2/nav-memory.png" alt=""><span>记忆</span>
+        </button>
+        <button class="rail-item nav-btn" data-page="settings" onclick="App.navigate('settings')">
+          <img src="assets/ui-v2/nav-settings.png" alt=""><span>设置</span>
+        </button>
+      </nav>
+      <div class="rail-note" aria-hidden="true"><span>愿每一次回望</span><span>都有灯亮着</span></div>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace-topbar">
+        <div class="workspace-heading">
+          <div class="workspace-eyebrow" id="workspace-eyebrow">DESKTOP · 暖灯已亮</div>
+          <h1 id="workspace-title">桌上的来信</h1>
+          <p id="workspace-subtitle">把今天轻轻放下，也听一听过去的回声。</p>
         </div>
-        <div class="header-nav">
-          <button class="nav-btn" data-page="write_letter" onclick="App.navigate('write_letter')">
-            写信
-          </button>
-          <button class="nav-btn" data-page="postcards" onclick="App.navigate('postcards')">
-            明信片
-          </button>
-          <button class="nav-btn" data-page="memories" onclick="App.navigate('memories')">
-            记忆
-          </button>
-          <button class="nav-btn" data-page="settings" onclick="App.navigate('settings')">
-            设置
-          </button>
+        <div class="workspace-status" aria-label="当前旅程状态">
+          <div><span>旅程</span><strong id="shell-day">第 0 天</strong></div>
+          <div><span>故乡</span><strong id="shell-hometown">尚未设置</strong></div>
         </div>
+      </header>
+
+      <div class="content" id="workspace-content">
+        <div class="page active" id="page-game"></div>
+        <div class="page" id="page-write_letter"></div>
+        <div class="page page-w" id="page-postcards"></div>
+        <div class="page" id="page-memories"></div>
+        <div class="page page-w" id="page-settings"></div>
       </div>
-    </div>
-
-    <!-- Toast -->
-    <div class="toast-c" id="toast-container"></div>
-
-    <!-- ===== 内容 ===== -->
-    <div class="content">
-
-      <div class="page active" id="page-game"></div>
-      <div class="page" id="page-write_letter"></div>
-      <div class="page page-w" id="page-postcards"></div>
-      <div class="page" id="page-memories"></div>
-      <div class="page page-w" id="page-settings"></div>
-
-    </div>
+    </main>
   </div>
+
+  <div class="toast-c" id="toast-container" aria-live="polite"></div>
 
   <script src="js/auth.js"></script>
   <script src="js/api.js"></script>
@@ -71,11 +76,12 @@
   <script src="js/pages/postcards.js"></script>
   <script src="js/pages/memories.js"></script>
   <script src="js/pages/settings.js"></script>
+  <script src="js/ui-v2.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       if (Auth.isLoggedIn()) {
         document.getElementById('auth-gate').style.display = 'none';
-        document.getElementById('app').style.display = 'flex';
+        document.getElementById('app').style.display = 'grid';
         App.init();
       } else {
         document.getElementById('auth-gate').style.display = 'flex';
