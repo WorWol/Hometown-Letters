@@ -100,12 +100,24 @@ def check_python() -> bool:
 def setup_venv() -> bool:
     """创建虚拟环境（如不存在）"""
     if VENV_DIR.is_dir() and (_python_path := Path(_python_exe())).is_file():
-        print(f"{GREEN}[✓] 虚拟环境已存在: {VENV_DIR}{NC}")
-        return True
+        try:
+            probe = subprocess.run(
+                [str(_python_path), "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if probe.returncode == 0:
+                print(f"{GREEN}[✓] 虚拟环境已存在: {VENV_DIR}{NC}")
+                return True
+            print(f"{YELLOW}[!] 虚拟环境已损坏，正在重建...{NC}")
+        except (OSError, subprocess.SubprocessError):
+            print(f"{YELLOW}[!] 虚拟环境已损坏，正在重建...{NC}")
 
-    print(f"{YELLOW}[!] 未检测到虚拟环境，正在创建...{NC}")
+    else:
+        print(f"{YELLOW}[!] 未检测到虚拟环境，正在创建...{NC}")
     try:
-        venv.create(VENV_DIR, with_pip=True, clear=False)
+        venv.create(VENV_DIR, with_pip=True, clear=VENV_DIR.exists())
         print(f"{GREEN}[✓] 虚拟环境创建成功: {VENV_DIR}{NC}")
         return True
     except Exception as e:

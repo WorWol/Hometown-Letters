@@ -21,6 +21,7 @@ const App = {
         this.state = { ...this.state, ...r.data };
         this.state.initialized = true;
         this.state.currentDay = r.data.current_day || 0;
+        this.state.pastSelfProfile = r.data.past_self_profile || {};
       }
     } catch (error) {
       if (error?.status === 401 || error?.message === '未登录') {

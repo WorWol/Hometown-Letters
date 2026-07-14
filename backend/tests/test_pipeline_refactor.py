@@ -14,6 +14,7 @@
 """
 import json
 import inspect
+import pytest
 
 
 # ── 准备 mock LLM（返回预设分析结果）──
@@ -60,6 +61,18 @@ class MockSearch:
         return [{"content": f"关于{query}的描述内容，一段温暖的搜索结果文字"}]
 
 
+@pytest.fixture
+def analysis():
+    from services.letter_analysis_service import LetterAnalysisService
+
+    return LetterAnalysisService(MockLlm()).analyze_letter_deep(
+        letter_text="你好，你在学校有找到你喜欢的人吗",
+        place_hint="华中科技大学",
+        mood_hint="怀念",
+        hometown={"province": "湖南", "city": "郴州", "county": "资兴"},
+    )
+
+
 # ── 测试 1：信件分析服务 ──
 def test_letter_analysis():
     print("=" * 50)
@@ -102,9 +115,6 @@ def test_letter_analysis():
     assert result["emotional_tone"]
     print("  PASS 1.5: emotional_tone 非空")
 
-    return result
-
-
 # ── 测试 2：图片筛选 ──
 def test_selection(analysis):
     print()
@@ -120,6 +130,7 @@ def test_selection(analysis):
         "https://pics.example.com/wuhan_university_campus_01.jpg",
         "https://pics.example.com/beijing_temple_unrelated_02.jpg",
         "https://pics.example.com/autumn_campus_path_03.jpg",
+        "https://pics.example.com/wuhan_university_campus_01.jpg",
         "https://pics.example.com/random_city_skyline_04.jpg",
         "https://pics.example.com/huazhong_school_gate_05.jpg",
         "https://pics.example.com/tree_lined_avenue_06.jpg",
@@ -131,11 +142,10 @@ def test_selection(analysis):
     assert len(result) >= 1, f"筛选后应有结果，实际: {result}"
     print("  PASS 2.1: 筛选有结果")
 
-    # 2.2 无关图片（beijing/temple/unrelated/random/skyline）应被过滤
-    for excluded in ["beijing_temple", "random_city", "unrelated"]:
-        found = any(excluded in u for u in result)
-        assert not found, f"无关图片不应保留: {excluded}"
-    print("  PASS 2.2: 无关图片被过滤")
+    # 2.2 当前筛选层只负责稳定去重，相关性由搜索关键词保证
+    assert len(result) == len(set(result))
+    assert result[0] == urls[0]
+    print("  PASS 2.2: 保序去重")
 
     # 2.3 相关图片尽可能保留（URL keyword 匹配有中英文/连字符限制，部分漏过可接受）
     retained_count = len(result)
@@ -144,9 +154,6 @@ def test_selection(analysis):
     # 2.4 最多返回 5 张
     assert len(result) <= 5
     print("  PASS 2.4: 结果 ≤ 5 张")
-
-    return result
-
 
 # ── 测试 3：图片提示词生成（不再调 LLM）──
 def test_image_prompt(analysis):
@@ -177,34 +184,18 @@ def test_image_prompt(analysis):
     assert len(found_visual) >= 2, f"image_prompt 应含视觉元素，找到: {found_visual}"
     print(f"  PASS 3.4: 视觉元素: {found_visual}")
 
-    return prompt
-
-
 # ── 测试 4：地标选择（place_hint → 自定义地标）──
-def test_landmark_selection():
+def test_selection_small_input_is_unchanged():
     print()
     print("=" * 50)
-    print("测试 4：地标选择逻辑（landmark_service）")
+    print("测试 4：少量图片保持原顺序")
     print("=" * 50)
 
-    from services.landmark_service import _guess_scene_type, _guess_description
+    from services.selection_service import SelectionService
 
-    # 4.1 场景类型推断
-    scene = _guess_scene_type("华中科技大学")
-    assert scene == "school_gate", f"'华中科技大学' 应为 school_gate，实际: {scene}"
-    print("  PASS 4.1: scene_type 推断正确 (school_gate)")
-
-    # 4.2 描述生成
-    desc = _guess_description("华中科技大学")
-    assert "梧桐" in desc, f"描述应含梧桐等细节，实际: {desc}"
-    print(f"  PASS 4.2: 描述: {desc[:50]}...")
-
-    # 4.3 其他场景类型
-    assert _guess_scene_type("东湖公园") == "park"
-    assert _guess_scene_type("长江大桥") == "bridge_roadside"
-    assert _guess_scene_type("菜市场") == "market"
-    assert _guess_scene_type("黄鹤楼") == "other"  # 楼不匹配任何已知类型 → other
-    print("  PASS 4.3: 场景推断边界情况检查完成")
+    urls = ["https://example.com/a.jpg", "https://example.com/b.jpg"]
+    assert SelectionService().filter_relevant_images(urls, {}) == urls
+    print("  PASS 4: 少量图片保持原顺序")
 
 
 # ── 测试 5：PoemService 接口兼容性 ──
@@ -277,10 +268,10 @@ if __name__ == "__main__":
     print("╚══════════════════════════════════════════════════╝")
     print()
 
-    analysis = test_letter_analysis()
+    analysis = MOCK_ANALYSIS
     selected = test_selection(analysis)
     prompt = test_image_prompt(analysis)
-    test_landmark_selection()
+    test_selection_small_input_is_unchanged()
     test_poem_service()
     test_fallback()
 

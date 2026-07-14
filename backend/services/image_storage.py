@@ -103,6 +103,11 @@ def get_image_url(image_id: str, api_prefix: str = "/api/image") -> str:
     OSS 模式：直接返回 OSS 公网 URL（或 CDN 域名）
     本地模式：返回后端代理路由
     """
+    # 降级图片可能直接保存为第三方 URL；刷新页面时应原样返回，
+    # 不能再次包装成 /api/image/https://...。
+    if image_id.startswith(("http://", "https://", "data:")):
+        return image_id
+
     bucket = _get_bucket()
     if bucket:
         cdn = os.environ.get("OSS_CDN_DOMAIN", "")

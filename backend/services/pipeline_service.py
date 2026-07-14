@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import traceback
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -212,16 +213,21 @@ class LetterPipeline:
             gen_result = await self.image_gen.generate(image_prompt, reference_images=ref_images)
 
             # ── 生成 ID ──
-            pc_id = f"pc-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            pc_id = (
+                f"pc-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+                f"-{uuid4().hex[:8]}"
+            )
 
             # ── 保存图片到文件系统 ──
             local_image_url = ""
+            stored_image_id = ""
             gen_image_url = gen_result.get("url", "")
             if gen_image_url:
                 try:
                     image_data = await ImgSvc.download_image_bytes(gen_image_url)
                     if image_data:
                         await save_image(pc_id, image_data, "image/jpeg")
+                        stored_image_id = pc_id
                         local_image_url = get_image_url(pc_id)
                     else:
                         local_image_url = gen_image_url
@@ -233,6 +239,7 @@ class LetterPipeline:
                     fallback_data = await ImgSvc.download_image_bytes(filtered_urls[0])
                     if fallback_data:
                         await save_image(pc_id, fallback_data, "image/jpeg")
+                        stored_image_id = pc_id
                         local_image_url = get_image_url(pc_id)
                 except Exception:
                     local_image_url = filtered_urls[0]
@@ -250,7 +257,9 @@ class LetterPipeline:
                 landmark_id=None,
                 landmark_description="",
                 mood=effective_mood,
-                image_path=pc_id,
+                # 本地/OSS 保存成功时记录存储 ID；下载失败时保留外部
+                # 降级 URL，确保刷新状态后仍能展示，而不是指向 404。
+                image_path=stored_image_id or local_image_url,
                 image_prompt=image_prompt,
                 search_image_urls=filtered_urls,
                 created_at=datetime.now(timezone.utc),
@@ -263,6 +272,7 @@ class LetterPipeline:
                 if filtered_urls:
                     local_image_url = filtered_urls[0]
                 postcard.used_fallback = True
+                postcard.image_path = stored_image_id or local_image_url
 
             # ── 保存明信片 ──
             logger.info("STEP 9: save postcard")
