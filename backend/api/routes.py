@@ -304,6 +304,59 @@ async def get_postcards(
     return {"ok": True, "data": postcards}
 
 
+@router.get("/community-letters")
+async def get_community_letters(
+    limit: int = 5,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取其他用户的公开信件，供新用户作为写作灵感参考。
+
+    前端通过 limit 参数控制获取数量。
+    返回其他用户最近写过的信（含故乡省市信息），排除当前用户自己的信。
+    """
+    from sqlalchemy import func as sa_func
+
+    # 先查当前用户的总信件数
+    total_result = await db.execute(
+        select(sa_func.count(Letter.id)).where(Letter.user_id == user.id)
+    )
+    my_count = total_result.scalar() or 0
+
+    # 查其他用户的最近信件，联表 hometown 获取地理位置
+    result = await db.execute(
+        select(Letter, Hometown)
+        .join(Hometown, Letter.user_id == Hometown.user_id, isouter=True)
+        .where(Letter.user_id != user.id)
+        .order_by(Letter.timestamp.desc())
+        .limit(max(1, min(limit, 20)))
+    )
+    rows = result.all()
+
+    letters = []
+    for lt, ht in rows:
+        letters.append({
+            "id": f"ltr-{lt.id}",
+            "text": lt.text,
+            "place": lt.place or "",
+            "mood": lt.mood or "",
+            "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+            "hometown": {
+                "province": ht.province if ht else "",
+                "city": ht.city if ht else "",
+                "hometownName": ht.hometown_name if ht else "",
+            } if ht else None,
+        })
+
+    return {
+        "ok": True,
+        "data": {
+            "letters": letters,
+            "myLetterCount": my_count,
+        },
+    }
+
+
 @router.get("/image/{image_id}")
 async def serve_image(image_id: str):
     """从文件系统提供图片"""
