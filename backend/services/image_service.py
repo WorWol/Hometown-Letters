@@ -41,22 +41,36 @@ class ImageService:
                 http_client=http_client,
             )
 
+    # 主模型失败时的备用模型列表
+    _FALLBACK_MODELS = [
+        "doubao-seedream-4-0-250828",
+    ]
+
     async def generate(self, prompt: str,
                        size: str = "2K",
                        reference_images: list[str] | None = None
                        ) -> dict[str, Any]:
-        """生成图像，返回结果包含 url（异步）"""
-        # 把风格描述拼接到 prompt 末尾
+        """生成图像，主模型失败自动切换备用模型"""
         styled_prompt = f"{prompt}. Style: {settings.image_gen_style}"
         if self.client:
-            return await self._generate_sdk(styled_prompt, size, reference_images)
+            result = await self._generate_sdk(styled_prompt, size, reference_images)
+            if result.get("ok"):
+                return result
+            # SDK 模式也尝试备用模型
+            for fb_model in self._FALLBACK_MODELS:
+                logger.info("retrying with fallback model: %s", fb_model)
+                result = await self._generate_sdk(styled_prompt, size, reference_images, model=fb_model)
+                if result.get("ok"):
+                    return result
+            return result
         return await self._generate_http(styled_prompt, size, reference_images)
 
     async def _generate_sdk(self, prompt: str, size: str,
-                            reference_images: list[str] | None) -> dict[str, Any]:
+                            reference_images: list[str] | None,
+                            model: str | None = None) -> dict[str, Any]:
         """使用 SDK 生成（异步）"""
         params: dict[str, Any] = {
-            "model": settings.volc_model,
+            "model": model or settings.volc_model,
             "prompt": prompt,
             "size": size,
             "response_format": "url",
@@ -80,15 +94,30 @@ class ImageService:
             return {"ok": False, "error": str(e)}
 
     async def _generate_http(self, prompt: str, size: str,
-                             reference_images: list[str] | None) -> dict[str, Any]:
-        """使用 httpx 异步调用 API（OpenAI 兼容格式）"""
+                             reference_images: list[str] | None,
+                             model: str | None = None) -> dict[str, Any]:
+        """使用 httpx 异步调用 API，失败自动切备用模型"""
+        models_to_try = [model] if model else [settings.volc_model] + self._FALLBACK_MODELS
+        last_error = ""
+        for m in models_to_try:
+            result = await self._try_generate_http(prompt, size, reference_images, m)
+            if result.get("ok"):
+                return result
+            last_error = result.get("error", "")
+            logger.warning("image gen model=%s failed: %s, trying next...", m, last_error[:80])
+        return {"ok": False, "error": last_error or "all models failed"}
+
+    async def _try_generate_http(self, prompt: str, size: str,
+                                 reference_images: list[str] | None,
+                                 model: str) -> dict[str, Any]:
+        """单次 HTTP 生图调用"""
         url = f"{settings.volc_base_url.rstrip('/')}/images/generations"
         headers = {
             "Authorization": f"Bearer {settings.volc_api_key}",
             "Content-Type": "application/json",
         }
         payload = {
-            "model": settings.volc_model,
+            "model": model,
             "prompt": prompt,
             "size": self._normalize_size(size),
             "n": 1,

@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from auth.dependencies import get_current_user
 from db.database import get_db
-from db.models import Hometown, Letter, Mail, Memory, PastSelfProfile, Postcard, User
+from db.models import Hometown, Letter, LetterLike, Mail, Memory, PastSelfProfile, Postcard, User
 from services import image_storage
 
 logger = logging.getLogger(__name__)
@@ -162,6 +162,35 @@ async def get_state(
             "recent_memory_signals": psp.recent_memory_signals,
         }
 
+    # Liked community letters
+    liked_result = await db.execute(
+        select(LetterLike, Letter, Postcard, User)
+        .join(Letter, LetterLike.letter_id == Letter.id)
+        .outerjoin(Postcard, Postcard.user_id == Letter.user_id)
+        .join(User, Letter.user_id == User.id)
+        .where(LetterLike.user_id == user.id)
+        .order_by(LetterLike.created_at.desc())
+        .limit(20)
+    )
+    liked_items = []
+    for lk, lt, pc, u in liked_result.all():
+        h_result = await db.execute(select(Hometown).where(Hometown.user_id == u.id))
+        ht = h_result.scalar_one_or_none()
+        item = {
+            "id": f"ltr-{lt.id}",
+            "text": lt.text,
+            "place": lt.place or "",
+            "mood": lt.mood or "",
+            "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+            "author": {
+                "username": u.username,
+                "hometown": ht.hometown_name or ht.city or "" if ht else "",
+            },
+        }
+        if pc:
+            item["postcard"] = _build_postcard_dict(pc)
+        liked_items.append(item)
+
     return {
         "ok": True,
         "data": {
@@ -172,6 +201,7 @@ async def get_state(
             "memories": memories,
             "postcards": postcards,
             "past_self_profile": past_self,
+            "likedItems": liked_items,
         },
     }
 
@@ -700,6 +730,104 @@ async def lookup_users(
     ]
 
     return {"ok": True, "data": {"users": users}}
+
+
+# ──────────── 社区发现 ────────────
+
+@router.get("/community/feed")
+async def get_community_feed(
+    limit: int = 10,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """随机获取其他用户的信件（含明信片），用于社区发现"""
+    from sqlalchemy import func as sa_func
+
+    result = await db.execute(
+        select(Letter, Postcard, User)
+        .outerjoin(Postcard, Postcard.user_id == Letter.user_id)
+        .join(User, Letter.user_id == User.id)
+        .where(Letter.user_id != user.id)
+        .order_by(sa_func.random())
+        .limit(max(1, min(limit, 30)))
+    )
+    rows = result.all()
+
+    liked_result = await db.execute(
+        select(LetterLike.letter_id).where(LetterLike.user_id == user.id)
+    )
+    liked_ids = set(r[0] for r in liked_result.all())
+
+    items = []
+    for lt, pc, u in rows:
+        hometown_name = ""
+        h_result = await db.execute(
+            select(Hometown).where(Hometown.user_id == u.id)
+        )
+        ht = h_result.scalar_one_or_none()
+        if ht:
+            hometown_name = ht.hometown_name or ht.city or ""
+
+        item = {
+            "id": f"ltr-{lt.id}",
+            "text": lt.text,
+            "place": lt.place or "",
+            "mood": lt.mood or "",
+            "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+            "author": {"username": u.username, "hometown": hometown_name},
+            "liked": lt.id in liked_ids,
+        }
+        if pc:
+            item["postcard"] = _build_postcard_dict(pc)
+        items.append(item)
+
+    return {"ok": True, "data": {"items": items}}
+
+
+@router.post("/community/like/{letter_id}")
+async def like_community_letter(
+    letter_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """点赞一封社区信件，收藏到桌面"""
+    result = await db.execute(
+        select(Letter).where(Letter.id == letter_id, Letter.user_id != user.id)
+    )
+    letter = result.scalar_one_or_none()
+    if letter is None:
+        return {"ok": False, "error": "信件不存在"}
+
+    exist = await db.execute(
+        select(LetterLike).where(
+            LetterLike.user_id == user.id, LetterLike.letter_id == letter_id
+        )
+    )
+    if exist.scalar_one_or_none():
+        return {"ok": True, "data": {"liked": True}}
+
+    db.add(LetterLike(user_id=user.id, letter_id=letter_id))
+    await db.flush()
+    return {"ok": True, "data": {"liked": True}}
+
+
+@router.delete("/community/like/{letter_id}")
+async def unlike_community_letter(
+    letter_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """取消点赞"""
+    result = await db.execute(
+        select(LetterLike).where(
+            LetterLike.user_id == user.id, LetterLike.letter_id == letter_id
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        await db.delete(existing)
+        await db.flush()
+    return {"ok": True, "data": {"liked": False}}
 
 
 @router.get("/image/{image_id}")

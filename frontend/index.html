@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/zpix@3.1.1/dist/Zpix.min.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
-<body class="ui-v2">
+<body class="workbench">
   <div class="room-backdrop" aria-hidden="true"></div>
   <div class="paper-overlay" aria-hidden="true"></div>
 
@@ -24,19 +24,25 @@
       </button>
       <nav class="rail-nav" aria-label="页面导航">
         <button class="rail-item nav-btn" data-page="game" onclick="App.navigate('game')">
-          <img src="assets/ui-v2/nav-desk.png" alt=""><span>桌面</span>
+          <img src="assets/icons/icon_mailbox.png" alt=""><span>桌面</span>
         </button>
         <button class="rail-item nav-btn" data-page="write_letter" onclick="App.navigate('write_letter')">
-          <img src="assets/ui-v2/nav-letter.png" alt=""><span>写信</span>
+          <img src="assets/letters/env_letter_paper.png" alt=""><span>写信</span>
         </button>
         <button class="rail-item nav-btn" data-page="postcards" onclick="App.navigate('postcards')">
-          <img src="assets/ui-v2/nav-postcards.png" alt=""><span>明信片</span>
+          <img src="assets/icons/icon_postcards.png" alt=""><span>明信片</span>
+        </button>
+        <button class="rail-item nav-btn" data-page="discover" onclick="App.navigate('discover')">
+          <img src="assets/icons/icon_settings.png" alt=""><span>发现</span>
+        </button>
+        <button class="rail-item nav-btn" data-page="mailbox" onclick="App.navigate('mailbox')">
+          <img src="assets/icons/icon_mailbox.png" alt=""><span>信箱</span>
         </button>
         <button class="rail-item nav-btn" data-page="memories" onclick="App.navigate('memories')">
-          <img src="assets/ui-v2/nav-memory.png" alt=""><span>记忆</span>
+          <img src="assets/icons/icon_memory.png" alt=""><span>记忆</span>
         </button>
         <button class="rail-item nav-btn" data-page="settings" onclick="App.navigate('settings')">
-          <img src="assets/ui-v2/nav-settings.png" alt=""><span>设置</span>
+          <img src="assets/icons/icon_settings.png" alt=""><span>设置</span>
         </button>
       </nav>
       <div class="rail-note" aria-hidden="true"><span>愿每一次回望</span><span>都有灯亮着</span></div>
@@ -59,6 +65,8 @@
         <div class="page active" id="page-game"></div>
         <div class="page" id="page-write_letter"></div>
         <div class="page page-w" id="page-postcards"></div>
+        <div class="page page-w" id="page-discover"></div>
+        <div class="page" id="page-mailbox"></div>
         <div class="page" id="page-memories"></div>
         <div class="page page-w" id="page-settings"></div>
       </div>
@@ -67,22 +75,32 @@
 
   <div class="toast-c" id="toast-container" aria-live="polite"></div>
 
-  <script src="js/auth.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/app.js"></script>
-  <script src="js/pages/auth.js"></script>
-  <script src="js/pages/game.js"></script>
-  <script src="js/pages/writeLetter.js"></script>
-  <script src="js/pages/postcards.js"></script>
-  <script src="js/pages/memories.js"></script>
-  <script src="js/pages/settings.js"></script>
-  <script src="js/ui-v2.js"></script>
+  <!-- 关键路径：先加载 auth/api/app -->
+  <script src="js/core/auth.js"></script>
+  <script src="js/core/api.js"></script>
+  <script src="js/core/app.js"></script>
+  <!-- 页面渲染函数，defer 不阻塞 -->
+  <script src="js/pages/auth.js" defer></script>
+  <script src="js/pages/game.js" defer></script>
+  <script src="js/pages/write-letter.js" defer></script>
+  <script src="js/pages/postcards.js" defer></script>
+  <script src="js/pages/discover.js" defer></script>
+  <script src="js/pages/mailbox.js" defer></script>
+  <script src="js/pages/memories.js" defer></script>
+  <script src="js/pages/settings.js" defer></script>
+  <script src="js/ui/workbench.js" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       if (Auth.isLoggedIn()) {
         document.getElementById('auth-gate').style.display = 'none';
         document.getElementById('app').style.display = 'grid';
         App.init();
+        // 背景图延迟加载，不阻塞首屏
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            document.querySelector('.room-backdrop')?.classList.add('loaded');
+          }, 100);
+        });
       } else {
         document.getElementById('auth-gate').style.display = 'flex';
         document.getElementById('app').style.display = 'none';

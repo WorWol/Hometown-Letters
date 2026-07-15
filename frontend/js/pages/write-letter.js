@@ -1,6 +1,6 @@
 /* ================================================================
    故乡来信 · 写信交互 (WriteLetterScene)
-   v6 — 四步骤：写信 → 装信封 → 贴邮戳 → 投递
+   四步骤：写信 → 装信封 → 贴邮戳 → 投递
    ================================================================ */
 
 const LetterStep = Object.freeze({
@@ -56,7 +56,7 @@ function renderWriteLetter() {
       <!-- 步骤 2-4: 信封 + 邮戳 + 邮票 -->
       <div class="env-envelope-wrap" id="env-envelope-wrap">
         <div class="env-envelope" id="env-envelope" onclick="enlargeEnvelope()">
-          <img class="env-stamp" id="env-stamp" src="assets/stamp.png" alt="邮票">
+          <img class="env-stamp" id="env-stamp" src="assets/letters/stamp.png" alt="邮票">
           <div class="env-postmark" id="env-postmark">
             <span class="env-postmark-inner">资兴<br>2026</span>
           </div>
@@ -79,7 +79,7 @@ function renderWriteLetter() {
 
     <!-- 邮箱 -->
     <div class="env-mailbox" id="env-mailbox">
-      <img src="assets/env_mailbox.png" alt="邮箱">
+      <img src="assets/letters/env_mailbox.png" alt="邮箱">
     </div>
   `;
 
@@ -274,11 +274,9 @@ async function deliverLetter() {
       const sr = await api.getState();
       if (_generation !== gen) { _busy = false; return; }
       if (sr.ok) {
-        App.state.letters = sr.data.letters || [];
-        App.state.postcards = sr.data.postcards || [];
-        App.state.currentDay = sr.data.current_day || 0;
+        App.applyState(sr.data);
       }
-    } catch (e) { console.warn('[writeLetter] state refresh failed:', e); }
+    } catch (e) { console.warn('[write-letter] state refresh failed:', e); }
 
     const _savedGen = gen;
     setTimeout(() => {

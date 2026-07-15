@@ -86,6 +86,24 @@ app.include_router(auth_router)
 app.include_router(api_router)
 
 
+# ── 静态资源缓存中间件 ──
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+_CACHE_EXTENSIONS = {".css", ".js", ".webp", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff2"}
+_CACHE_SECONDS = 86400  # 1 天
+
+class StaticCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if any(path.endswith(ext) for ext in _CACHE_EXTENSIONS):
+            response.headers["Cache-Control"] = f"public, max-age={_CACHE_SECONDS}, immutable"
+        return response
+
+app.add_middleware(StaticCacheMiddleware)
+
+
 # ── 静态资源：前端文件挂载到根路径 ──
 _frontend_dir = _os.path.join(_os.path.dirname(__file__), "..", "frontend")
 if _os.path.isdir(_frontend_dir):

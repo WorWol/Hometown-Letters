@@ -79,7 +79,7 @@ def print_banner() -> None:
     """打印启动横幅"""
     print(f"{CYAN}══════════════════════════════════════{NC}")
     print(f"{CYAN}  故乡来信 — Hometown Letters{NC}")
-    print(f"{CYAN}  跨平台启动脚本 v2.0{NC}")
+    print(f"{CYAN}  跨平台启动脚本{NC}")
     print(f"{CYAN}══════════════════════════════════════{NC}")
     print(f"  系统: {platform.system()} {platform.release()}")
     print(f"  Python: {sys.version.split()[0]}")

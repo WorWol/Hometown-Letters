@@ -110,7 +110,7 @@ async function saveMem() {
     const r = await api.saveMemory(t.value.trim(), tags, pl.value.trim());
     if(r.ok) {
       const sr = await api.getState();
-      if(sr.ok){App.state.memories=sr.data.memories||[];App.state.pastSelfProfile=sr.data.past_self_profile||{};}
+      if(sr.ok) App.applyState(sr.data);
       document.querySelector('.modal')?.remove(); App.showToast('记忆已收好'); renderMemories();
     } else { s.textContent = r.error||'未能保存'; }
   } catch(e) { s.textContent = '网络错误'; console.error(e); }

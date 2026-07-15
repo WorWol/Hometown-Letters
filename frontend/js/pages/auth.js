@@ -147,5 +147,6 @@ function doLogout() {
     letters: [],
     memories: [],
     pastSelfProfile: {},
+    likedItems: [],
   };
 }

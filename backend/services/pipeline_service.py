@@ -230,10 +230,9 @@ class LetterPipeline:
                         stored_image_id = pc_id
                         local_image_url = get_image_url(pc_id)
                     else:
-                        local_image_url = gen_image_url
+                        logger.warning("gen image download returned empty, using local fallback")
                 except Exception as dl_err:
-                    logger.warning("image download error: %s", dl_err)
-                    local_image_url = gen_image_url
+                    logger.warning("image download error: %s, using local fallback", dl_err)
             elif filtered_urls:
                 try:
                     fallback_data = await ImgSvc.download_image_bytes(filtered_urls[0])
@@ -241,8 +240,11 @@ class LetterPipeline:
                         await save_image(pc_id, fallback_data, "image/jpeg")
                         stored_image_id = pc_id
                         local_image_url = get_image_url(pc_id)
-                except Exception:
-                    local_image_url = filtered_urls[0]
+                    else:
+                        # 下载失败，不保存外链（太慢会卡页面），用空值让前端展示渐变占位图
+                        logger.warning("fallback image download returned empty, skipping external URL")
+                except Exception as e:
+                    logger.warning("fallback image download failed: %s, skipping external URL", e)
 
             # ── 组装明信片 ──
             logger.info("STEP 8: assemble postcard")
@@ -269,10 +271,7 @@ class LetterPipeline:
             )
 
             if not gen_result.get("ok") or not local_image_url:
-                if filtered_urls:
-                    local_image_url = filtered_urls[0]
                 postcard.used_fallback = True
-                postcard.image_path = stored_image_id or local_image_url
 
             # ── 保存明信片 ──
             logger.info("STEP 9: save postcard")

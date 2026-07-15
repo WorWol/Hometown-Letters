@@ -1,6 +1,11 @@
 /* ===== API 客户端 ===== */
 
-const API_BASE = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' ? '' : 'http://127.0.0.1:8787';
+// The backend serves the app on 8787. Keep same-origin requests there, while
+// allowing the separate static frontend server used during local UI work.
+const API_BASE = (
+  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+  (!window.location.port || window.location.port === '8787')
+) ? '' : 'http://127.0.0.1:8787';
 
 const api = {
   async _fetch(path, options = {}) {
@@ -140,6 +145,20 @@ const api = {
 
   async deleteMail(mailId) {
     return this._fetchAuth(`/api/mail/${mailId}`, { method: 'DELETE' });
+  },
+
+  // ── 社区发现 ──
+
+  async getCommunityFeed(limit = 10) {
+    return this._fetchAuth(`/api/community/feed?limit=${limit}`);
+  },
+
+  async likeCommunityLetter(letterId) {
+    return this._fetchAuth(`/api/community/like/${letterId}`, { method: 'POST' });
+  },
+
+  async unlikeCommunityLetter(letterId) {
+    return this._fetchAuth(`/api/community/like/${letterId}`, { method: 'DELETE' });
   },
 
 };

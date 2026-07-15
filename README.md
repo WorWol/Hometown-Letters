@@ -73,12 +73,16 @@ Hometown-Letters/
 ├── frontend/
 │   ├── index.html               # SPA 外壳 + 认证门
 │   ├── css/style.css            # 像素风样式
-│   ├── assets/                  # PNG 精灵图
+│   ├── assets/
+│   │   ├── icons/               # 导航图标
+│   │   ├── letters/             # 信纸、信封、邮票素材
+│   │   ├── postcards/           # 明信片素材
+│   │   ├── ui/                  # 通用界面素材
+│   │   └── workbench/           # Warm Workbench 主题场景图
 │   └── js/
-│       ├── api.js               # API 客户端
-│       ├── app.js               # 路由 + 状态管理
-│       ├── auth.js              # Token 管理
-│       └── pages/               # 页面模块
+│       ├── core/                # API、认证、应用状态与路由
+│       ├── pages/               # 页面模块
+│       └── ui/workbench.js      # Warm Workbench 视觉壳层
 ├── .env.example                 # 环境变量模板
 ├── Dockerfile                   # Docker 镜像
 └── docker-compose.yml           # 开发环境（热重载）
@@ -257,7 +261,7 @@ alembic downgrade -1
 |------|------|------|
 | 登录/注册 | `#login` / `#register` | [auth.js](frontend/js/pages/auth.js) |
 | 桌面主页 | `#game` | [game.js](frontend/js/pages/game.js) |
-| 写信 | `#writeLetter` | [writeLetter.js](frontend/js/pages/writeLetter.js) |
+| 写信 | `#page-write_letter` | [write-letter.js](frontend/js/pages/write-letter.js) |
 | 明信片收藏 | `#postcards` | [postcards.js](frontend/js/pages/postcards.js) |
 | 记忆 | `#memories` | [memories.js](frontend/js/pages/memories.js) |
 | 设置 | `#settings` | [settings.js](frontend/js/pages/settings.js) |

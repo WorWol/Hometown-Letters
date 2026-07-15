@@ -10,6 +10,7 @@ const App = {
     letters: [],
     memories: [],
     pastSelfProfile: {},
+    likedItems: [],
   },
 
   currentPage: 'game',
@@ -18,22 +19,41 @@ const App = {
     try {
       const r = await api.getState();
       if (r.ok && r.data) {
-        this.state = { ...this.state, ...r.data };
-        this.state.initialized = true;
-        this.state.currentDay = r.data.current_day || 0;
-        this.state.pastSelfProfile = r.data.past_self_profile || {};
+        this.applyState(r.data);
       }
     } catch (error) {
-      if (error?.status === 401 || error?.message === '未登录') {
+      if ((error?.status === 401 || error?.message === '未登录') && Auth.isLoggedIn()) {
         console.log('登录状态失效，返回登录页');
         if (typeof showAuthGate === 'function') {
           showAuthGate();
         }
         return;
       }
-      console.log('无法获取状态，请先登录');
+      if (Auth.isLoggedIn()) console.log('无法获取状态，请先登录');
     }
     this.navigate(this.currentPage);
+  },
+
+  applyState(data = {}) {
+    this.state = {
+      ...this.state,
+      ...data,
+      currentDay: data.current_day ?? data.currentDay ?? this.state.currentDay ?? 0,
+      pastSelfProfile: data.past_self_profile ?? data.pastSelfProfile ?? this.state.pastSelfProfile ?? {},
+      likedItems: data.likedItems ?? data.liked_items ?? this.state.likedItems ?? [],
+      postcards: Array.isArray(data.postcards) ? data.postcards : (this.state.postcards || []),
+      letters: Array.isArray(data.letters) ? data.letters : (this.state.letters || []),
+      memories: Array.isArray(data.memories) ? data.memories : (this.state.memories || []),
+      initialized: true,
+    };
+    this.syncShell?.();
+    return this.state;
+  },
+
+  async refreshState() {
+    const r = await api.getState();
+    if (r.ok && r.data) this.applyState(r.data);
+    return r;
   },
 
   navigate(page) {
@@ -56,6 +76,7 @@ const App = {
   },
 
   showPostcardDetail(pc) {
+    if (!pc) return;
     const e = document.querySelector('.modal');
     if (e) e.remove();
     const o = document.createElement('div');
@@ -77,7 +98,7 @@ const App = {
         </div>
         <div class="modal-pc">
           <div class="fr" onclick="event.stopPropagation();enlargePostcardImage(this.querySelector('.iw'))">
-            <img class="ov" src="assets/postcard_frame.png" alt="">
+            <img class="ov" src="assets/postcards/postcard_frame.png" alt="">
             <div class="iw">${imgHtml}</div>
           </div>
         </div>
@@ -119,7 +140,7 @@ const App = {
     if (img) {
       const g = this._imgGradient(pc.place, pc.mood);
       return `<div style="width:100%;height:100%;background:${g};border-radius:inherit;">
-          <img src="${this._e(img)}" alt="" loading="eager"
+          <img src="${this._e(img)}" alt="" loading="lazy"
             onerror="this.style.display='none'"
             style="width:100%;height:100%;object-fit:cover;display:block;">
         </div>`;
@@ -132,6 +153,15 @@ const App = {
   },
 
   _e(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+
+  _js(s) {
+    return JSON.stringify(String(s ?? ''))
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+      .replace(/'/g, '\\u0027')
+      .replace(/"/g, '&quot;');
+  },
 };
 
 /* ================ 明信片图片点击放大 ================ */

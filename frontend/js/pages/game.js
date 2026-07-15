@@ -115,13 +115,13 @@ async function nextDay() {
 
   try {
     if (!App.state.initialized) {
-      const r = await api.initHometown({ user_id:'default', province:'湖南', city:'郴州', county:'资兴', hometown_name:'资兴' });
+      const r = await api.initHometown({ province:'湖南', city:'郴州', county:'资兴', hometown_name:'资兴' });
       if (r.ok) { App.state.initialized = true; App.state.hometown = r.data.hometown; App.state.profile = r.data.profile; }
     }
     const lr = await api.sendLetter('今天天气不错，我想去走走看看。', App.state.hometown?.hometownName||'资兴', '平静');
     if (lr.ok) {
       const sr = await api.getState();
-      if (sr.ok) { App.state.postcards = sr.data.postcards||[]; App.state.currentDay = sr.data.current_day||0; }
+      if (sr.ok) App.applyState(sr.data);
       if (st) st.textContent = `${App.state.postcards.length||0} 封来信`;
       App.showToast('新的明信片已到达');
       if (lr.data) setTimeout(() => App.showPostcardDetail(lr.data), 500);
