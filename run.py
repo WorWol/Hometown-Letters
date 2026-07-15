@@ -30,6 +30,16 @@ import venv
 from pathlib import Path
 
 
+# Windows PowerShell / cmd 可能仍使用 GBK。启动脚本包含中文和 ✓/✗ 字符，
+# 统一以 UTF-8 写出，避免在打印第一条状态信息时就抛 UnicodeEncodeError。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
 # ── 常量 ──
 PROJECT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = PROJECT_DIR / "backend"
@@ -79,7 +89,7 @@ def print_banner() -> None:
     """打印启动横幅"""
     print(f"{CYAN}══════════════════════════════════════{NC}")
     print(f"{CYAN}  故乡来信 — Hometown Letters{NC}")
-    print(f"{CYAN}  跨平台启动脚本 v2.0{NC}")
+    print(f"{CYAN}  跨平台启动脚本{NC}")
     print(f"{CYAN}══════════════════════════════════════{NC}")
     print(f"  系统: {platform.system()} {platform.release()}")
     print(f"  Python: {sys.version.split()[0]}")
@@ -102,15 +112,38 @@ def setup_venv() -> bool:
     if VENV_DIR.is_dir() and (_python_path := Path(_python_exe())).is_file():
         try:
             probe = subprocess.run(
-                [str(_python_path), "--version"],
+                [
+                    str(_python_path),
+                    "-c",
+                    "import pathlib, sys; print(pathlib.Path(sys.prefix).resolve())",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=10,
             )
-            if probe.returncode == 0:
+            pip_probe = subprocess.run(
+                [str(_python_path), "-m", "pip", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            actual_prefix = probe.stdout.strip().casefold()
+            expected_prefix = str(VENV_DIR.resolve()).casefold()
+            if (
+                probe.returncode == 0
+                and pip_probe.returncode == 0
+                and actual_prefix == expected_prefix
+            ):
                 print(f"{GREEN}[✓] 虚拟环境已存在: {VENV_DIR}{NC}")
                 return True
-            print(f"{YELLOW}[!] 虚拟环境已损坏，正在重建...{NC}")
+            reason = (
+                pip_probe.stderr.strip()
+                or probe.stderr.strip()
+                or "虚拟环境路径与当前项目不一致"
+            )
+            print(f"{YELLOW}[!] 虚拟环境已损坏或来自旧路径，正在重建...{NC}")
+            if reason:
+                print(f"{YELLOW}    {reason.splitlines()[-1]}{NC}")
         except (OSError, subprocess.SubprocessError):
             print(f"{YELLOW}[!] 虚拟环境已损坏，正在重建...{NC}")
 
@@ -118,6 +151,14 @@ def setup_venv() -> bool:
         print(f"{YELLOW}[!] 未检测到虚拟环境，正在创建...{NC}")
     try:
         venv.create(VENV_DIR, with_pip=True, clear=VENV_DIR.exists())
+        verify = subprocess.run(
+            [_python_exe(), "-m", "pip", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if verify.returncode != 0:
+            raise RuntimeError(verify.stderr.strip() or "pip 初始化失败")
         print(f"{GREEN}[✓] 虚拟环境创建成功: {VENV_DIR}{NC}")
         return True
     except Exception as e:
@@ -132,29 +173,32 @@ def install_deps() -> bool:
         return False
 
     print(f"{CYAN}[…] 安装依赖...{NC}")
-    pip = _pip_exe()
+    python = _python_exe()
     try:
         result = subprocess.run(
-            [pip, "install", "-r", str(REQUIREMENTS_FILE)],
-            capture_output=True,
-            text=True,
+            [
+                python,
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "--no-cache-dir",
+                "-r",
+                str(REQUIREMENTS_FILE),
+            ],
             timeout=600,
         )
         if result.returncode == 0:
             print(f"{GREEN}[✓] 依赖安装完成{NC}")
             return True
         else:
-            # 打印最后几行错误
-            lines = result.stderr.strip().split("\n")
-            for line in lines[-5:]:
-                print(f"  {RED}{line}{NC}")
-            print(f"{RED}[✗] 依赖安装失败，请检查上方错误信息{NC}")
+            print(f"{RED}[✗] 依赖安装失败（退出码 {result.returncode}），请检查上方 pip 输出{NC}")
             return False
     except subprocess.TimeoutExpired:
         print(f"{RED}[✗] 依赖安装超时（5分钟）{NC}")
         return False
     except FileNotFoundError:
-        print(f"{RED}[✗] 未找到 pip: {pip}{NC}")
+        print(f"{RED}[✗] 未找到虚拟环境 Python: {python}{NC}")
         print(f"{RED}    虚拟环境可能已损坏，请删除 {VENV_DIR} 后重试{NC}")
         return False
 

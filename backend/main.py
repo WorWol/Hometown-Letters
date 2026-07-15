@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os as _os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -22,28 +23,11 @@ from logger import setup_logging
 # ── 日志系统 ──
 logger = setup_logging()
 
-# ── 创建应用 ──
-app = FastAPI(title="故乡来信 API", version="3.1.0")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-
-# ── 路由注册 ──
-from auth.routes import router as auth_router
-from api.routes import router as api_router
-
-app.include_router(auth_router)
-app.include_router(api_router)
-
-
-# ── 启动事件：初始化数据库 + 创建服务单例 ──
-@app.on_event("startup")
-async def startup():
+# ── 生命周期：启动时初始化数据库 + 创建服务单例 ──
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理 — 替代已弃用的 @app.on_event('startup')"""
     from db.database import init_db
     from services.llm_service import LlmService
     from services.search_service import SearchService
@@ -76,6 +60,48 @@ async def startup():
         poem_svc=poem_svc,
         memory_svc=memory_svc,
     )
+    logger.info("服务单例已注入 app.state")
+
+    yield
+
+    # shutdown（暂无清理需求）
+
+
+# ── 创建应用 ──
+app = FastAPI(title="故乡来信 API", version="3.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ── 路由注册 ──
+from auth.routes import router as auth_router
+from api.routes import router as api_router
+
+app.include_router(auth_router)
+app.include_router(api_router)
+
+
+# ── 静态资源缓存中间件 ──
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+_CACHE_EXTENSIONS = {".css", ".js", ".webp", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff2"}
+_CACHE_SECONDS = 86400  # 1 天
+
+class StaticCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if any(path.endswith(ext) for ext in _CACHE_EXTENSIONS):
+            response.headers["Cache-Control"] = f"public, max-age={_CACHE_SECONDS}, immutable"
+        return response
+
+app.add_middleware(StaticCacheMiddleware)
 
 
 # ── 静态资源：前端文件挂载到根路径 ──

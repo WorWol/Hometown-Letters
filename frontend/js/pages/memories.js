@@ -3,55 +3,31 @@
 function renderMemories() {
   const el = document.getElementById('page-memories');
   if (!el) return;
-  const ms = App.state.memories||[];
-  const prof = App.state.pastSelfProfile||{};
-  const places = prof.latent_place_affinities||[];
-  const sensory = prof.sensory_biases||[];
-  const identity = prof.identity_signals||[];
-  const recent = prof.recent_memory_signals||[];
-  const hasProf = places.length>0||sensory.length>0;
-
-  const profHTML = hasProf ? `
-    <div class="profile">
-      <div class="s-tit">过去的我</div>
-      <p class="smr">${App._e(prof.summary||'有些印象还很轻，但已经在心里慢慢留下来了。')}</p>
-      ${places.length>0?`<div class="s-tit" style="margin-top:0;font-size:13px;">总会想起的地方</div>
-        <div class="pg" style="margin-bottom:10px;">${places.slice(0,6).map(p=>`<span class="pi">${App._e(p.name||'')}</span>`).join('')}</div>`:''}
-      ${sensory.length>0?`<div class="s-tit" style="font-size:13px;">风、光和气味</div>
-        <div class="pg" style="margin-bottom:10px;">${sensory.slice(0,6).map(s=>`<span class="pi pi-g">${App._e(s.name||'')}</span>`).join('')}</div>`:''}
-      ${identity.length>0?`<div class="s-tit" style="font-size:13px;">过去的我是个怎样的小孩</div>
-        ${identity.slice(0,4).map(id=>`<div class="pp">· ${_il(id.name||'')}</div>`).join('')}`:''}
-      ${recent.length>0?`<div class="s-tit" style="font-size:13px;margin-top:10px;">慢慢留了下来的</div>
-        ${recent.slice(0,4).map(r=>`<div class="pp">· 最近总会想起${App._e(r.name||'')}</div>`).join('')}`:''}
-    </div>` : `<div class="card" style="margin-bottom:14px;"><div class="card-ttl">过去的我</div>
-      <p style="color:var(--dk-muted);font-size:13.5px;">写下一些记忆后，它会慢慢在这里浮现。</p></div>`;
-
+  const memories = App.state.memories || [];
+  const profile = App.state.pastSelfProfile || {};
+  const places = profile.latent_place_affinities || [];
+  const sensory = profile.sensory_biases || [];
+  const identity = profile.identity_signals || [];
+  const recent = profile.recent_memory_signals || [];
+  const hasProfile = places.length || sensory.length || identity.length || recent.length;
+  window._memories = memories;
   el.innerHTML = `
-    <div class="pg-hd">
-      <h2>记忆册</h2>
-      <p>${App.state.hometown?.hometownName?`· ${App._e(App.state.hometown.hometownName)} `:''}这里放着我想起来的一些事。</p>
-    </div>
-    <div class="mem-lay">
-      <div class="mem-main">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="font-size:14px;color:var(--dk-sec);font-weight:500;">${ms.length} 条记忆</span>
-          <button class="btn btn-pri" onclick="showMemForm()">记下一件小事</button>
-        </div>
-        ${ms.length===0?`<div class="card" style="text-align:center;padding:36px 20px;"><p style="color:var(--dk-muted);">还没有记下任何事。</p></div>`
-          :`<div>${ms.map((m,i)=>`
-            <div class="card mem-item" onclick="showMemDetail(mem__${i})">
-              <div class="tx">${App._e(m.text)}</div>
-              <div class="mt">${m.tags&&m.tags.length>0?`标签：${m.tags.join('、')} · `:''}${m.timestamp?new Date(m.timestamp).toLocaleString('zh-CN'):''}${m.analysisStatus?` · ${_as(m.analysisStatus)}`:''}</div>
-              ${m.tags&&m.tags.length>0?`<div class="tg">${m.tags.map(t=>`<span class="tag tag-g">${App._e(t)}</span>`).join('')}</div>`:''}
-            </div>`).join('')}</div>`}
-      </div>
-      <div class="mem-side">${profHTML}</div>
+    <div class="memory-grid">
+      <section class="memory-list-panel paper-panel">
+        <div class="panel-heading"><div><span class="section-kicker">${memories.length} MEMORIES</span><h2>收好的小事</h2></div><button class="btn btn-pri" onclick="showMemForm()">记下一件小事</button></div>
+        ${memories.length ? `<div class="memory-list">${memories.map((memory, index) => `
+          <button class="memory-item" onclick="showMemDetail(window._memories[${index}])"><span class="memory-thread" aria-hidden="true"></span><span class="memory-copy"><strong>${App._e((memory.text || '').slice(0, 80))}</strong><small>${memory.timestamp ? new Date(memory.timestamp).toLocaleString('zh-CN') : ''}${memory.analysisStatus ? ` · ${_as(memory.analysisStatus)}` : ''}</small><span class="modal-tags">${(memory.tags || []).map(tag => `<span class="tag tag-g">${App._e(tag)}</span>`).join('')}</span></span></button>`).join('')}</div>` : `<div class="visual-empty"><img src="assets/workbench/empty-mailbox-card.webp" alt="空白记忆桌面"><div><h3>还没有记下任何事</h3><p>某个地方、某种气味、一个瞬间，都值得被收好。</p></div></div>`}
+      </section>
+      <aside class="profile-card dark-panel">
+        <span class="section-kicker">THE PAST ME</span><h2>过去的我</h2><p>${App._e(profile.summary || '写下一些记忆后，过去的轮廓会慢慢在这里浮现。')}</p>
+        ${hasProfile ? `<div class="profile-groups">
+          ${places.length ? `<div><h3>总会想起的地方</h3><div class="modal-tags">${places.slice(0, 6).map(item => `<span class="tag">${App._e(item.name || '')}</span>`).join('')}</div></div>` : ''}
+          ${sensory.length ? `<div><h3>风、光和气味</h3><div class="modal-tags">${sensory.slice(0, 6).map(item => `<span class="tag">${App._e(item.name || '')}</span>`).join('')}</div></div>` : ''}
+          ${identity.length ? `<div><h3>那时的我</h3>${identity.slice(0, 4).map(item => `<p class="profile-line">${App._e(_il(item.name || ''))}</p>`).join('')}</div>` : ''}
+          ${recent.length ? `<div><h3>慢慢留下来的</h3>${recent.slice(0, 4).map(item => `<p class="profile-line">最近总会想起 ${App._e(item.name || '')}</p>`).join('')}</div>` : ''}
+        </div>` : ''}
+      </aside>
     </div>`;
-  window._mems = ms;
-  el.querySelectorAll('[onclick*="mem__"]').forEach(el2=>{
-    const m = el2.getAttribute('onclick').match(/mem__(\d+)/);
-    if (m) el2.setAttribute('onclick',`showMemDetail(window._mems[${parseInt(m[1])}])`);
-  });
 }
 
 function _il(n) {
@@ -110,7 +86,7 @@ async function saveMem() {
     const r = await api.saveMemory(t.value.trim(), tags, pl.value.trim());
     if(r.ok) {
       const sr = await api.getState();
-      if(sr.ok){App.state.memories=sr.data.memories||[];App.state.pastSelfProfile=sr.data.past_self_profile||{};}
+      if(sr.ok) App.applyState(sr.data);
       document.querySelector('.modal')?.remove(); App.showToast('记忆已收好'); renderMemories();
     } else { s.textContent = r.error||'未能保存'; }
   } catch(e) { s.textContent = '网络错误'; console.error(e); }

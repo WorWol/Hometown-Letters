@@ -9,10 +9,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from auth.dependencies import get_current_user
 from db.database import get_db
-from db.models import Hometown, Letter, Memory, PastSelfProfile, Postcard, User
+from db.models import Hometown, Letter, LetterLike, Mail, Memory, PastSelfProfile, Postcard, User
 from services import image_storage
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,14 @@ class MemorySaveReq(BaseModel):
     text: str
     tags: list[str] = []
     place_hint: str = ""
+
+
+class MailSendReq(BaseModel):
+    recipient_username: str
+    title: str = ""
+    content: str
+    attached_postcard_id: int | None = None
+    attached_letter_id: int | None = None
 
 
 # ──────────── DI 依赖 ────────────
@@ -153,6 +162,35 @@ async def get_state(
             "recent_memory_signals": psp.recent_memory_signals,
         }
 
+    # Liked community letters
+    liked_result = await db.execute(
+        select(LetterLike, Letter, Postcard, User)
+        .join(Letter, LetterLike.letter_id == Letter.id)
+        .outerjoin(Postcard, Postcard.user_id == Letter.user_id)
+        .join(User, Letter.user_id == User.id)
+        .where(LetterLike.user_id == user.id)
+        .order_by(LetterLike.created_at.desc())
+        .limit(20)
+    )
+    liked_items = []
+    for lk, lt, pc, u in liked_result.all():
+        h_result = await db.execute(select(Hometown).where(Hometown.user_id == u.id))
+        ht = h_result.scalar_one_or_none()
+        item = {
+            "id": f"ltr-{lt.id}",
+            "text": lt.text,
+            "place": lt.place or "",
+            "mood": lt.mood or "",
+            "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+            "author": {
+                "username": u.username,
+                "hometown": ht.hometown_name or ht.city or "" if ht else "",
+            },
+        }
+        if pc:
+            item["postcard"] = _build_postcard_dict(pc)
+        liked_items.append(item)
+
     return {
         "ok": True,
         "data": {
@@ -163,6 +201,7 @@ async def get_state(
             "memories": memories,
             "postcards": postcards,
             "past_self_profile": past_self,
+            "likedItems": liked_items,
         },
     }
 
@@ -302,6 +341,493 @@ async def get_postcards(
             "usedFallback": pc.used_fallback,
         })
     return {"ok": True, "data": postcards}
+
+
+@router.get("/community-letters")
+async def get_community_letters(
+    limit: int = 5,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取其他用户的公开信件，供新用户作为写作灵感参考。
+
+    前端通过 limit 参数控制获取数量。
+    返回其他用户最近写过的信（含故乡省市信息），排除当前用户自己的信。
+    """
+    from sqlalchemy import func as sa_func
+
+    # 先查当前用户的总信件数
+    total_result = await db.execute(
+        select(sa_func.count(Letter.id)).where(Letter.user_id == user.id)
+    )
+    my_count = total_result.scalar() or 0
+
+    # 查其他用户的最近信件，联表 hometown 获取地理位置
+    result = await db.execute(
+        select(Letter, Hometown)
+        .join(Hometown, Letter.user_id == Hometown.user_id, isouter=True)
+        .where(Letter.user_id != user.id)
+        .order_by(Letter.timestamp.desc())
+        .limit(max(1, min(limit, 20)))
+    )
+    rows = result.all()
+
+    letters = []
+    for lt, ht in rows:
+        letters.append({
+            "id": f"ltr-{lt.id}",
+            "text": lt.text,
+            "place": lt.place or "",
+            "mood": lt.mood or "",
+            "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+            "hometown": {
+                "province": ht.province if ht else "",
+                "city": ht.city if ht else "",
+                "hometownName": ht.hometown_name if ht else "",
+            } if ht else None,
+        })
+
+    return {
+        "ok": True,
+        "data": {
+            "letters": letters,
+            "myLetterCount": my_count,
+        },
+    }
+
+
+# ──────────── 辅助函数 ────────────
+
+def _build_postcard_dict(pc: Postcard) -> dict:
+    """将 Postcard ORM 对象转换为前端使用的字典格式"""
+    image_url = ""
+    if pc.image_path:
+        image_url = image_storage.get_image_url(pc.image_path)
+    return {
+        "id": str(pc.id),
+        "title": pc.title,
+        "body": pc.body,
+        "poem": pc.poem,
+        "place": pc.place,
+        "landmarkId": pc.landmark_id,
+        "landmarkDescription": pc.landmark_description,
+        "mood": pc.mood,
+        "imageUrl": image_url,
+        "imagePrompt": pc.image_prompt,
+        "searchImageUrls": pc.search_image_urls,
+        "createdAt": pc.created_at.isoformat() if pc.created_at else "",
+        "letterText": pc.letter_text,
+        "tags": pc.tags,
+        "usedFallback": pc.used_fallback,
+    }
+
+
+def _build_letter_dict(lt: Letter) -> dict:
+    """将 Letter ORM 对象转换为前端使用的字典格式"""
+    return {
+        "id": f"ltr-{lt.id}",
+        "text": lt.text,
+        "place": lt.place,
+        "mood": lt.mood,
+        "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+    }
+
+
+def _build_mail_dict(mail: Mail) -> dict:
+    """将 Mail ORM 对象转换为前端使用的字典格式"""
+    result = {
+        "id": str(mail.id),
+        "senderId": mail.sender_id,
+        "senderUsername": mail.sender.username if mail.sender else "",
+        "recipientId": mail.recipient_id,
+        "recipientUsername": mail.recipient.username if mail.recipient else "",
+        "title": mail.title,
+        "content": mail.content,
+        "isRead": mail.is_read,
+        "sentAt": mail.sent_at.isoformat() if mail.sent_at else "",
+    }
+    if mail.attached_postcard:
+        result["attachedPostcard"] = _build_postcard_dict(mail.attached_postcard)
+    else:
+        result["attachedPostcard"] = None
+    if mail.attached_letter:
+        result["attachedLetter"] = _build_letter_dict(mail.attached_letter)
+    else:
+        result["attachedLetter"] = None
+    return result
+
+
+# ──────────── 邮件端点 ────────────
+
+@router.post("/mail/send")
+async def send_mail(
+    body: MailSendReq,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """向其他用户邮寄信件，可附带明信片或历史信件"""
+    # 查找收件人
+    result = await db.execute(
+        select(User).where(User.username == body.recipient_username)
+    )
+    recipient = result.scalar_one_or_none()
+    if recipient is None:
+        return {"ok": False, "error": "收件人不存在"}
+
+    # 不能给自己发信
+    if recipient.id == user.id:
+        return {"ok": False, "error": "不能给自己寄信"}
+
+    # 附带资源归属校验
+    if body.attached_postcard_id is not None:
+        pc_result = await db.execute(
+            select(Postcard).where(
+                Postcard.id == body.attached_postcard_id,
+                Postcard.user_id == user.id,
+            )
+        )
+        if pc_result.scalar_one_or_none() is None:
+            return {"ok": False, "error": "附带明信片不存在或不属于你"}
+
+    if body.attached_letter_id is not None:
+        lt_result = await db.execute(
+            select(Letter).where(
+                Letter.id == body.attached_letter_id,
+                Letter.user_id == user.id,
+            )
+        )
+        if lt_result.scalar_one_or_none() is None:
+            return {"ok": False, "error": "附带信件不存在或不属于你"}
+
+    mail = Mail(
+        sender_id=user.id,
+        recipient_id=recipient.id,
+        title=body.title,
+        content=body.content,
+        attached_postcard_id=body.attached_postcard_id,
+        attached_letter_id=body.attached_letter_id,
+    )
+    db.add(mail)
+    await db.flush()
+
+    return {
+        "ok": True,
+        "data": {
+            "id": str(mail.id),
+            "sentAt": mail.sent_at.isoformat() if mail.sent_at else "",
+        },
+    }
+
+
+@router.get("/mail/inbox")
+async def get_inbox(
+    page: int = 1,
+    page_size: int = 20,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取收件箱 — 收到的信件列表"""
+    page = max(1, page)
+    page_size = max(1, min(page_size, 50))
+
+    # 未读数
+    from sqlalchemy import func as sa_func
+    unread_result = await db.execute(
+        select(sa_func.count(Mail.id)).where(
+            Mail.recipient_id == user.id,
+            Mail.is_read == False,
+            Mail.recipient_deleted == False,
+        )
+    )
+    unread_count = unread_result.scalar() or 0
+
+    # 收件列表
+    offset = (page - 1) * page_size
+    result = await db.execute(
+        select(Mail)
+        .options(
+            selectinload(Mail.sender),
+            selectinload(Mail.recipient),
+            selectinload(Mail.attached_postcard),
+            selectinload(Mail.attached_letter),
+        )
+        .where(Mail.recipient_id == user.id, Mail.recipient_deleted == False)
+        .order_by(Mail.sent_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    mails = [_build_mail_dict(m) for m in result.scalars().all()]
+
+    # 总数
+    total_result = await db.execute(
+        select(sa_func.count(Mail.id)).where(
+            Mail.recipient_id == user.id,
+            Mail.recipient_deleted == False,
+        )
+    )
+    total = total_result.scalar() or 0
+
+    return {
+        "ok": True,
+        "data": {
+            "mails": mails,
+            "unreadCount": unread_count,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+        },
+    }
+
+
+@router.get("/mail/outbox")
+async def get_outbox(
+    page: int = 1,
+    page_size: int = 20,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取发件箱 — 发出的信件列表"""
+    page = max(1, page)
+    page_size = max(1, min(page_size, 50))
+
+    offset = (page - 1) * page_size
+    result = await db.execute(
+        select(Mail)
+        .options(
+            selectinload(Mail.sender),
+            selectinload(Mail.recipient),
+            selectinload(Mail.attached_postcard),
+            selectinload(Mail.attached_letter),
+        )
+        .where(Mail.sender_id == user.id, Mail.sender_deleted == False)
+        .order_by(Mail.sent_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    mails = [_build_mail_dict(m) for m in result.scalars().all()]
+
+    from sqlalchemy import func as sa_func
+    total_result = await db.execute(
+        select(sa_func.count(Mail.id)).where(
+            Mail.sender_id == user.id,
+            Mail.sender_deleted == False,
+        )
+    )
+    total = total_result.scalar() or 0
+
+    return {
+        "ok": True,
+        "data": {
+            "mails": mails,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+        },
+    }
+
+
+@router.get("/mail/{mail_id}")
+async def get_mail_detail(
+    mail_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取单封信件的详情"""
+    result = await db.execute(
+        select(Mail)
+        .options(
+            selectinload(Mail.sender),
+            selectinload(Mail.recipient),
+            selectinload(Mail.attached_postcard),
+            selectinload(Mail.attached_letter),
+        )
+        .where(Mail.id == mail_id)
+    )
+    mail = result.scalar_one_or_none()
+    if mail is None:
+        return {"ok": False, "error": "信件不存在"}
+
+    # 只有发件人或收件人能查看
+    if mail.sender_id != user.id and mail.recipient_id != user.id:
+        return {"ok": False, "error": "无权查看此信件"}
+
+    return {"ok": True, "data": _build_mail_dict(mail)}
+
+
+@router.put("/mail/{mail_id}/read")
+async def mark_mail_read(
+    mail_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """将信件标记为已读"""
+    result = await db.execute(
+        select(Mail).where(Mail.id == mail_id)
+    )
+    mail = result.scalar_one_or_none()
+    if mail is None:
+        return {"ok": False, "error": "信件不存在"}
+
+    # 只有收件人可以标记已读
+    if mail.recipient_id != user.id:
+        return {"ok": False, "error": "只有收件人可以标记已读"}
+
+    mail.is_read = True
+    await db.flush()
+
+    return {"ok": True, "data": {"id": str(mail.id), "isRead": True}}
+
+
+@router.delete("/mail/{mail_id}")
+async def delete_mail(
+    mail_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除信件（软删除）"""
+    result = await db.execute(
+        select(Mail).where(Mail.id == mail_id)
+    )
+    mail = result.scalar_one_or_none()
+    if mail is None:
+        return {"ok": False, "error": "信件不存在"}
+
+    # 只有发件人或收件人可以删除
+    if mail.sender_id != user.id and mail.recipient_id != user.id:
+        return {"ok": False, "error": "无权删除此信件"}
+
+    if mail.sender_id == user.id:
+        mail.sender_deleted = True
+    if mail.recipient_id == user.id:
+        mail.recipient_deleted = True
+
+    await db.flush()
+
+    return {"ok": True, "data": {"id": str(mail.id)}}
+
+
+@router.get("/users/lookup")
+async def lookup_users(
+    q: str = "",
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按用户名搜索其他用户（用于选择收件人）"""
+    if not q or len(q.strip()) < 1:
+        return {"ok": True, "data": {"users": []}}
+
+    result = await db.execute(
+        select(User)
+        .where(
+            User.username.contains(q.strip()),
+            User.id != user.id,
+        )
+        .limit(20)
+    )
+    users = [
+        {"id": u.id, "username": u.username}
+        for u in result.scalars().all()
+    ]
+
+    return {"ok": True, "data": {"users": users}}
+
+
+# ──────────── 社区发现 ────────────
+
+@router.get("/community/feed")
+async def get_community_feed(
+    limit: int = 10,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """随机获取其他用户的信件（含明信片），用于社区发现"""
+    from sqlalchemy import func as sa_func
+
+    result = await db.execute(
+        select(Letter, Postcard, User)
+        .outerjoin(Postcard, Postcard.user_id == Letter.user_id)
+        .join(User, Letter.user_id == User.id)
+        .where(Letter.user_id != user.id)
+        .order_by(sa_func.random())
+        .limit(max(1, min(limit, 30)))
+    )
+    rows = result.all()
+
+    liked_result = await db.execute(
+        select(LetterLike.letter_id).where(LetterLike.user_id == user.id)
+    )
+    liked_ids = set(r[0] for r in liked_result.all())
+
+    items = []
+    for lt, pc, u in rows:
+        hometown_name = ""
+        h_result = await db.execute(
+            select(Hometown).where(Hometown.user_id == u.id)
+        )
+        ht = h_result.scalar_one_or_none()
+        if ht:
+            hometown_name = ht.hometown_name or ht.city or ""
+
+        item = {
+            "id": f"ltr-{lt.id}",
+            "text": lt.text,
+            "place": lt.place or "",
+            "mood": lt.mood or "",
+            "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+            "author": {"username": u.username, "hometown": hometown_name},
+            "liked": lt.id in liked_ids,
+        }
+        if pc:
+            item["postcard"] = _build_postcard_dict(pc)
+        items.append(item)
+
+    return {"ok": True, "data": {"items": items}}
+
+
+@router.post("/community/like/{letter_id}")
+async def like_community_letter(
+    letter_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """点赞一封社区信件，收藏到桌面"""
+    result = await db.execute(
+        select(Letter).where(Letter.id == letter_id, Letter.user_id != user.id)
+    )
+    letter = result.scalar_one_or_none()
+    if letter is None:
+        return {"ok": False, "error": "信件不存在"}
+
+    exist = await db.execute(
+        select(LetterLike).where(
+            LetterLike.user_id == user.id, LetterLike.letter_id == letter_id
+        )
+    )
+    if exist.scalar_one_or_none():
+        return {"ok": True, "data": {"liked": True}}
+
+    db.add(LetterLike(user_id=user.id, letter_id=letter_id))
+    await db.flush()
+    return {"ok": True, "data": {"liked": True}}
+
+
+@router.delete("/community/like/{letter_id}")
+async def unlike_community_letter(
+    letter_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """取消点赞"""
+    result = await db.execute(
+        select(LetterLike).where(
+            LetterLike.user_id == user.id, LetterLike.letter_id == letter_id
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        await db.delete(existing)
+        await db.flush()
+    return {"ok": True, "data": {"liked": False}}
 
 
 @router.get("/image/{image_id}")

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 5
 MAX_CONTEXT_SUMMARIES = 3
 MAX_CONTEXT_MEMORIES = 3
+MAX_CONTEXT_LETTERS = 5
 
 SYSTEM_BATCH_MEMORY = """你是一位擅长阅读连续书信的记忆整理者。
 
@@ -72,9 +73,10 @@ SYSTEM_PROFILE = """你是一位敏锐的心理观察者，善于从阶段性书
 
 class MemoryService:
     async def load_user_context(
-        self, db: AsyncSession, user_id: int, llm=None
+        self, db: AsyncSession, user_id: int
     ) -> dict:
-        """加载写信所需上下文：历史 summary / memory + 未满 5 封的尾部信件"""
+        """加载写信所需上下文：最近信件 + 阶段记忆总结 + 长期画像"""
+        recent_letters = await self._load_recent_letters(db, user_id, MAX_CONTEXT_LETTERS)
         summaries = await self._load_recent_summaries(db, user_id, MAX_CONTEXT_SUMMARIES)
         memories = await self._load_recent_memories(db, user_id, MAX_CONTEXT_MEMORIES)
         tail_letters = await self._load_tail_letters(db, user_id)
@@ -97,10 +99,12 @@ class MemoryService:
             }
 
         logger.info(
-            "loaded user memory context: summaries=%d memories=%d tail_letters=%d profile=%s",
-            len(summaries), len(memories), len(tail_letters), "yes" if profile_summary else "no",
+            "loaded user memory context: recent_letters=%d summaries=%d memories=%d tail=%d profile=%s",
+            len(recent_letters), len(summaries), len(memories), len(tail_letters),
+            "yes" if profile_summary else "no",
         )
         return {
+            "recent_letters": recent_letters,
             "recent_summaries": summaries,
             "recent_memories": memories,
             "tail_letters": tail_letters,
@@ -266,12 +270,23 @@ class MemoryService:
     def format_context_for_prompt(self, user_context: dict) -> str:
         parts = []
 
+        # 1) 最近 5 封信（最直接的上下文）
+        recent = user_context.get("recent_letters", [])
+        if recent:
+            parts.append("用户最近写过的信：")
+            for i, lt in enumerate(recent, 1):
+                loc = f"，地点：{lt['place']}" if lt.get("place") else ""
+                mood = f"，情绪：{lt['mood']}" if lt.get("mood") else ""
+                parts.append(f"  {i}. {lt['text']}{loc}{mood}")
+
+        # 2) 阶段总结（LLM 浓缩后的回顾）
         summaries = user_context.get("recent_summaries", [])
         if summaries:
             parts.append("最近阶段总结：")
             for item in summaries:
                 parts.append(f"  - 第{item['batch_no']}批：{item['summary_text']}")
 
+        # 3) 阶段记忆信号（地点/情绪/主题/人物/感官）
         memories = user_context.get("recent_memories", [])
         if memories:
             parts.append("最近阶段记忆：")
@@ -294,12 +309,14 @@ class MemoryService:
                     line.append("；".join(signal_parts))
                 parts.append(" ".join(line))
 
+        # 4) 未归档的尾部信件（还没满 5 封的新来信）
         tail_letters = user_context.get("tail_letters", [])
         if tail_letters:
             parts.append("当前阶段尚未归档的来信：")
             for i, text in enumerate(tail_letters, 1):
                 parts.append(f"  {i}. {text[:200]}")
 
+        # 5) 长期画像
         if user_context.get("profile_summary"):
             parts.append(f"长期画像：{user_context['profile_summary']}")
 
@@ -360,6 +377,28 @@ class MemoryService:
         )
         letters = list(reversed(result.scalars().all()))
         return [lt.text[:200] for lt in letters if (lt.text or "").strip()]
+
+    async def _load_recent_letters(
+        self, db: AsyncSession, user_id: int, limit: int
+    ) -> list[dict]:
+        """加载用户最近 N 封信件（含地点和情绪）"""
+        result = await db.execute(
+            select(Letter)
+            .where(Letter.user_id == user_id)
+            .order_by(Letter.timestamp.desc(), Letter.id.desc())
+            .limit(limit)
+        )
+        letters = list(reversed(result.scalars().all()))
+        return [
+            {
+                "id": lt.id,
+                "text": (lt.text or "").strip().replace("\n", " ")[:300],
+                "place": lt.place or "",
+                "mood": lt.mood or "",
+                "timestamp": lt.timestamp.isoformat() if lt.timestamp else "",
+            }
+            for lt in letters
+        ]
 
     def _build_batch_payload(self, letters: list[Letter]) -> str:
         parts = []
