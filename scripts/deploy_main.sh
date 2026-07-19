@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+# ECS 部署入口：同步 origin/main，检查环境，构建并启动 Docker 服务。
+# 不覆盖 .env，不删除数据库、生成图片或 Docker volume。
+#
+# 用法：
+#   bash scripts/deploy_main.sh
+#   bash scripts/deploy_main.sh --force
+
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+BRANCH="${DEPLOY_BRANCH:-main}"
+HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:8787/api/admin/health}"
+HEALTH_RETRIES="${DEPLOY_HEALTH_RETRIES:-30}"
+HEALTH_INTERVAL="${DEPLOY_HEALTH_INTERVAL:-2}"
+FORCE=false
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { printf '%b\n' "${CYAN}[deploy]${NC} $*"; }
+ok() { printf '%b\n' "${GREEN}[ ok ]${NC} $*"; }
+warn() { printf '%b\n' "${YELLOW}[warn]${NC} $*"; }
+die() { printf '%b\n' "${RED}[fail]${NC} $*" >&2; exit 1; }
+
+usage() { sed -n '1,18p' "$0"; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force) FORCE=true; shift ;;
+    --help|-h) usage; exit 0 ;;
+    *) die "不支持的参数：$1。使用 --help 查看用法。" ;;
+  esac
+done
+
+cd "$PROJECT_ROOT"
+command -v git >/dev/null 2>&1 || die "找不到 git。"
+command -v docker >/dev/null 2>&1 || die "找不到 docker。"
+command -v curl >/dev/null 2>&1 || die "找不到 curl。"
+docker compose version >/dev/null 2>&1 || die "找不到 Docker Compose。"
+[[ -f docker-compose.yml || -f compose.yaml ]] || die "项目中找不到 Compose 配置。"
+[[ -f .env ]] || die "找不到 .env；脚本不会自动生成或覆盖生产配置。"
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "当前目录不是 Git 仓库：$PROJECT_ROOT"
+
+log "部署目录：$PROJECT_ROOT"
+log "目标分支：origin/$BRANCH"
+
+# 只阻止已跟踪文件改动；backend/data、generated_images 等运行数据可以保留。
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  [[ "$FORCE" == true ]] || die "Git 工作区存在本地改动。请先处理，或明确使用 --force。"
+  warn "--force：丢弃已跟踪文件的本地改动；.env 和忽略文件不会被覆盖。"
+  git reset --hard HEAD >/dev/null
+fi
+
+log "获取远端 main 最新代码……"
+git fetch --prune origin "$BRANCH"
+git checkout -B "$BRANCH" "origin/$BRANCH" >/dev/null
+ok "代码版本：$(git rev-parse --short HEAD)"
+
+log "校验 Compose 配置……"
+docker compose config -q
+ok "Compose 配置有效；.env 未被覆盖。"
+
+log "构建并启动前后端服务……"
+docker compose up -d --build
+
+log "等待健康检查：$HEALTH_URL"
+for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
+  if curl --fail --silent --show-error --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+    ok "服务已启动并通过健康检查。"
+    docker compose ps
+    exit 0
+  fi
+  sleep "$HEALTH_INTERVAL"
+done
+
+docker compose ps >&2 || true
+warn "健康检查未通过，输出最近日志："
+docker compose logs --tail=80 >&2 || true
+die "部署未通过健康检查。"
