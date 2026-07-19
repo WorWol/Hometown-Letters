@@ -1,4 +1,4 @@
-/* ===== 应用核心：路由 + 状态 + UI ===== */
+/* 应用核心：状态、通用媒体处理与轻量工具。 */
 
 const App = {
   state: {
@@ -17,33 +17,79 @@ const App = {
 
   async init() {
     try {
-      const r = await api.getState();
-      if (r.ok && r.data) {
-        this.applyState(r.data);
-      }
+      const response = await api.getState();
+      if (response.ok && response.data) this.applyState(response.data);
     } catch (error) {
       if ((error?.status === 401 || error?.message === '未登录') && Auth.isLoggedIn()) {
-        console.log('登录状态失效，返回登录页');
-        if (typeof showAuthGate === 'function') {
-          showAuthGate();
-        }
+        if (typeof showAuthGate === 'function') showAuthGate();
         return;
       }
-      if (Auth.isLoggedIn()) console.log('无法获取状态，请先登录');
+      if (Auth.isLoggedIn()) console.warn('[app] 无法获取状态', error);
     }
     this.navigate(this.currentPage);
   },
 
+  getMediaUrl(valueOrRecord) {
+    const raw = typeof valueOrRecord === 'string'
+      ? valueOrRecord
+      : valueOrRecord?.imageUrl
+        ?? valueOrRecord?.image_url
+        ?? valueOrRecord?.imagePath
+        ?? valueOrRecord?.image_path;
+    if (raw === null || raw === undefined) return '';
+    const value = String(raw).trim();
+    if (!value) return '';
+    if (/^(?:https?:|data:|blob:)/i.test(value) || value.startsWith('/') || value.startsWith('./') || value.startsWith('../') || value.startsWith('assets/')) {
+      return value;
+    }
+    return `/api/image/${encodeURIComponent(value)}`;
+  },
+
+  normalizePostcard(postcard) {
+    if (!postcard || typeof postcard !== 'object') return postcard;
+    const createdAt = postcard.createdAt ?? postcard.created_at ?? postcard.timestamp ?? '';
+    const imageUrl = this.getMediaUrl(postcard);
+    const imageThumbUrl = this.getMediaUrl(
+      postcard.imageThumbUrl ?? postcard.image_thumb_url ?? imageUrl,
+    );
+    const imageOriginalUrl = this.getMediaUrl(
+      postcard.imageOriginalUrl ?? postcard.image_original_url ?? imageUrl,
+    );
+    return {
+      ...postcard,
+      createdAt,
+      imageUrl,
+      imageThumbUrl,
+      imageOriginalUrl,
+      usedFallback: postcard.usedFallback ?? postcard.used_fallback ?? false,
+      keywords: postcard.keywords ?? postcard.tags ?? [],
+    };
+  },
+
+  normalizeCommunityItem(item) {
+    if (!item || typeof item !== 'object') return item;
+    return { ...item, postcard: this.normalizePostcard(item.postcard) };
+  },
+
+  normalizeMail(mail) {
+    if (!mail || typeof mail !== 'object') return mail;
+    return {
+      ...mail,
+      attachedPostcard: this.normalizePostcard(mail.attachedPostcard ?? mail.attached_postcard),
+      attachedLetter: mail.attachedLetter ?? mail.attached_letter,
+    };
+  },
+
   applyState(data = {}) {
+    const postcards = Array.isArray(data.postcards) ? data.postcards.map(item => this.normalizePostcard(item)) : (this.state.postcards || []);
+    const likedRaw = data.likedItems ?? data.liked_items ?? this.state.likedItems ?? [];
     this.state = {
       ...this.state,
       ...data,
-      currentDay: data.current_day ?? this.state.currentDay ?? 0,
-      postcardLimit: data.postcard_limit ?? this.state.postcardLimit ?? 5,
-      postcardCount: data.postcard_count ?? this.state.postcardCount ?? 0,
-      pastSelfProfile: data.past_self_profile ?? this.state.pastSelfProfile ?? {},
-      likedItems: data.likedItems ?? this.state.likedItems ?? [],
-      postcards: Array.isArray(data.postcards) ? data.postcards : (this.state.postcards || []),
+      currentDay: data.current_day ?? data.currentDay ?? this.state.currentDay ?? 0,
+      pastSelfProfile: data.past_self_profile ?? data.pastSelfProfile ?? this.state.pastSelfProfile ?? {},
+      likedItems: Array.isArray(likedRaw) ? likedRaw.map(item => this.normalizeCommunityItem(item)) : [],
+      postcards,
       letters: Array.isArray(data.letters) ? data.letters : (this.state.letters || []),
       memories: Array.isArray(data.memories) ? data.memories : (this.state.memories || []),
       initialized: true,
@@ -53,150 +99,94 @@ const App = {
   },
 
   async refreshState() {
-    const r = await api.getState();
-    if (r.ok && r.data) this.applyState(r.data);
-    return r;
+    const response = await api.getState();
+    if (response.ok && response.data) this.applyState(response.data);
+    return response;
   },
 
   navigate(page) {
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    const t = document.getElementById(`page-${page}`);
-    if (t) t.classList.add('active');
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+    document.querySelectorAll('#app .page').forEach(node => node.classList.remove('active'));
+    document.getElementById(`page-${page}`)?.classList.add('active');
     this.currentPage = page;
-    const fn = `render${page.split('_').map(s=>s[0].toUpperCase()+s.slice(1)).join('')}`;
+    const fn = `render${page.split('_').map(part => part[0].toUpperCase() + part.slice(1)).join('')}`;
     if (typeof window[fn] === 'function') window[fn]();
   },
 
-  showToast(msg, dur = 2500) {
-    const c = document.getElementById('toast-container');
-    const t = document.createElement('div');
-    t.className = 'toast';
-    t.textContent = msg;
-    c.appendChild(t);
-    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.4s'; setTimeout(()=>t.remove(),400); }, dur);
+  showToast(message, duration = 2500) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('leaving');
+      setTimeout(() => toast.remove(), 260);
+    }, duration);
   },
 
-  showPostcardDetail(pc) {
-    if (!pc) return;
-    const e = document.querySelector('.modal');
-    if (e) e.remove();
-    const o = document.createElement('div');
-    o.className = 'modal';
-    o.onclick = e => { if (e.target === o) o.remove(); };
-    const poem = pc.poem || '';
-    const tags = pc.keywords || pc.tags || [];
-    const imgHtml = this._imgHtml(pc, { original: true });
-
-    o.innerHTML = `
-      <div class="modal-pnl">
-        <div class="modal-hd">
-          <h3>${this._e(pc.title||'无题明信片')}</h3>
-          <button class="modal-cl" onclick="this.closest('.modal').remove()">×</button>
-        </div>
-        <div class="modal-meta">
-          ${this._e(pc.place||'')}${pc.place&&pc.mood?' · ':''}${this._e(pc.mood||'')}
-          ${pc.createdAt?' · '+new Date(pc.createdAt).toLocaleDateString('zh-CN'):''}
-        </div>
-        <div class="modal-pc">
-          <div class="fr" onclick="event.stopPropagation();enlargePostcardImage(this.querySelector('.iw'))">
-            <img class="ov" src="assets/postcards/postcard_frame.png" alt="">
-            <div class="iw">${imgHtml}</div>
-          </div>
-        </div>
-        <div class="modal-bd">${this._e(pc.body||'')}</div>
-        ${poem ? `<div class="modal-poem">${this._e(poem)}</div>` : ''}
-        <div class="modal-tags">${tags.map(t=>`<span class="tag">${this._e(String(t))}</span>`).join('')}</div>
-        ${pc.letterText?`<div class="modal-poem" style="border-top:none;font-style:normal;font-size:13px;color:var(--px-ink-muted);">来信：${this._e(pc.letterText.slice(0,80))}${pc.letterText.length>80?'…':''}</div>`:''}
-        <div class="modal-ft">
-          <button class="btn btn-sec" onclick="this.closest('.modal').remove()">关闭</button>
-        </div>
-      </div>`;
-    document.body.appendChild(o);
-  },
-
-  /* 根据地点/情绪生成场景渐变 "照片" */
   _imgGradient(place, mood) {
-    const scenes = {
-      '秀流公园':'linear-gradient(145deg,#6B9E6B 0%,#8CB87C 25%,#C9B88A 60%,#D4A76A 100%)',
-      '东江湖':'linear-gradient(145deg,#6A9AB5 0%,#8BB8C9 30%,#A8C8D8 55%,#A8C0A8 100%)',
-      '老街':'linear-gradient(145deg,#A08060 0%,#C4A882 30%,#D8C4A8 60%,#C8A880 100%)',
-      '学校':'linear-gradient(145deg,#7DA87D 0%,#A8C8A0 30%,#C8D8B8 60%,#D0C090 100%)',
-      '晒谷场':'linear-gradient(145deg,#C8A860 0%,#D8C080 30%,#E0D098 60%,#D0B870 100%)',
-      '资兴':'linear-gradient(145deg,#7BA87B 0%,#A0C0A0 35%,#C0C8A8 65%,#D0C098 100%)',
-      default:'linear-gradient(145deg,#B8C8B0 0%,#C8D0BC 35%,#D0C8B0 65%,#C0B0A0 100%)',
-    };
-    if (place && scenes[place]) return scenes[place];
-    if (mood) {
-      if (mood.includes('平静')||mood.includes('宁静')) return 'linear-gradient(145deg,#7AA8A0 0%,#90B8B0 35%,#B0C8B8 65%,#C0D0B8 100%)';
-      if (mood.includes('怀念')) return 'linear-gradient(145deg,#A0805E 0%,#C0A880 35%,#D0B898 65%,#C8A880 100%)';
-      if (mood.includes('温暖')) return 'linear-gradient(145deg,#C8906E 0%,#D0B090 40%,#D8C0A0 70%,#E0D0B0 100%)';
-    }
-    return scenes.default;
+    if (mood?.includes('平静') || mood?.includes('宁静')) return 'linear-gradient(145deg,#6f9188,#adc0a5 58%,#dfc999)';
+    if (mood?.includes('怀念')) return 'linear-gradient(145deg,#8c674e,#c49e72 52%,#e2c99f)';
+    if (mood?.includes('温暖')) return 'linear-gradient(145deg,#b87355,#d8aa78 52%,#efd7a8)';
+    const seed = String(place || '').length % 3;
+    return [
+      'linear-gradient(145deg,#748a65,#a8b489 48%,#d8bd82)',
+      'linear-gradient(145deg,#607f83,#91aaa1 48%,#d7c292)',
+      'linear-gradient(145deg,#7d6655,#b99a77 48%,#ddc39a)',
+    ][seed];
   },
 
-  /* 渲染明信片图片区域（真实图或渐变占位） */
-  _imgHtml(pc, opts = {}) {
-    const { small, original } = opts;
-    const img = original ? pc.imageOriginalUrl : small ? pc.imageThumbUrl : pc.imageUrl;
-    if (img) {
-      const g = this._imgGradient(pc.place, pc.mood);
-      return `<div style="width:100%;height:100%;background:${g};border-radius:inherit;">
-          <img src="${this._e(img)}" alt="" loading="lazy"
-            onerror="this.style.display='none'"
-            style="width:100%;height:100%;object-fit:cover;display:block;">
-        </div>`;
-    }
-    const g = this._imgGradient(pc.place, pc.mood);
-    const place = this._e(pc.place || '');
+  handleMediaLoad(image) {
+    image?.closest('.media-frame')?.classList.add('is-loaded');
+  },
+
+  handleMediaError(image) {
+    const frame = image?.closest('.media-frame');
+    if (frame) frame.classList.add('is-fallback');
+    if (image) image.hidden = true;
+  },
+
+  _imgHtml(postcard = {}, options = {}) {
+    const pc = this.normalizePostcard(postcard) || {};
+    const imageUrl = options.original
+      ? (pc.imageOriginalUrl || pc.imageUrl)
+      : options.small
+        ? (pc.imageThumbUrl || pc.imageUrl)
+        : pc.imageUrl;
+    const place = this._e(pc.place || '沿途');
     const mood = this._e(pc.mood || '');
-    const label = small ? '' : `<div class="ph-lbl">${place}${mood?' · '+mood:''}</div>`;
-    return `<div class="ph-img" style="background:${g}">${label}</div>`;
+    const compact = options.small ? ' compact' : '';
+    const state = imageUrl ? ' has-image' : ' is-fallback';
+    return `<div class="media-frame${compact}${state}" style="--media-fallback:${this._imgGradient(pc.place, pc.mood)}">
+      ${imageUrl ? `<img src="${this._e(imageUrl)}" alt="${place}的明信片画面" loading="lazy" onload="App.handleMediaLoad(this)" onerror="App.handleMediaError(this)">` : ''}
+      <div class="media-fallback" aria-hidden="${imageUrl ? 'true' : 'false'}">
+        <span class="media-fallback-mark">□</span><strong>画面暂缺</strong><small>${place}${mood ? ` · ${mood}` : ''}</small>
+      </div>
+    </div>`;
   },
 
-  _e(s) { if(!s)return''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+  _e(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
 
-  _js(s) {
-    return JSON.stringify(String(s ?? ''))
-      .replace(/</g, '\\u003c')
-      .replace(/>/g, '\\u003e')
-      .replace(/&/g, '\\u0026')
-      .replace(/'/g, '\\u0027')
-      .replace(/"/g, '&quot;');
+  _js(value) {
+    return JSON.stringify(String(value ?? ''))
+      .replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')
+      .replace(/'/g, '\\u0027').replace(/"/g, '&quot;');
   },
 };
 
-/* ================ 明信片图片点击放大 ================ */
-
-function enlargePostcardImage(iwEl) {
-  if (!iwEl) return;
-
-  // 创建全屏遮罩
+function enlargePostcardImage(source) {
+  if (!source) return;
   const overlay = document.createElement('div');
-  overlay.className = 'env-overlay';
-
-  // 克隆图片容器
-  const clone = iwEl.cloneNode(true);
-  clone.className = 'env-img-large';
-
-  // 如果有 img 标签，修复其样式以显示原图
-  const img = clone.querySelector('img');
-  if (img) {
-    img.style.width = 'auto';
-    img.style.height = 'auto';
-    img.style.maxWidth = '90vw';
-    img.style.maxHeight = '85vh';
-    img.style.objectFit = 'contain';
-    img.style.display = 'block';
-    img.onerror = function() { this.style.display = 'none'; };
-  }
-
+  overlay.className = 'image-lightbox';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  const clone = source.cloneNode(true);
+  clone.classList.add('lightbox-media');
   overlay.appendChild(clone);
-
-  // 点击遮罩关闭
-  overlay.addEventListener('click', function() {
-    overlay.remove();
-  });
-
+  overlay.addEventListener('click', () => overlay.remove());
   document.body.appendChild(overlay);
-};
+}

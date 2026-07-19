@@ -36,14 +36,13 @@ function renderDiscover() {
 }
 
 async function _loadDiscoverFeed(requestId = _discRequest) {
-  if (_discLoading) return;
   _discLoading = true;
   const listEl = document.getElementById('discover-list');
   try {
     const r = await api.getCommunityFeed(12);
     if (requestId !== _discRequest) return;
     if (!r.ok || !r.data) { if (listEl) listEl.innerHTML = '<div class="visual-empty"><div><p>暂时没有远方的来信。</p></div></div>'; return; }
-    _discoverItems = r.data.items || [];
+    _discoverItems = (r.data.items || []).map(item => App.normalizeCommunityItem(item));
     if (listEl) _renderDiscoverList(listEl);
   } catch (e) {
     if (requestId === _discRequest && listEl) listEl.innerHTML = '<div class="visual-empty"><div><p>网络不好，再试一次吧。</p><button class="btn btn-sec" onclick="renderDiscover()">再试一次</button></div></div>';
@@ -73,15 +72,12 @@ function _renderDiscoverList(container) {
 
   container.innerHTML = items.map((item, i) => {
     const pc = item.postcard;
-    const hasPc = !!(pc && (pc.imageThumbUrl || pc.body));
-    const imgGradient = App._imgGradient(item.place, item.mood);
+    const hasPc = !!(pc && (pc.imageUrl || pc.body));
     return `
       <div class="disc-card">
         ${hasPc ? `
         <button type="button" class="disc-card-img" aria-label="打开明信片详情" onclick="event.stopPropagation();App.showPostcardDetail(window._discPC[${i}])">
-          ${pc.imageThumbUrl
-            ? `<img src="${App._e(pc.imageThumbUrl)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.style.background='${imgGradient}';this.style.display='none';">`
-            : `<div class="disc-card-gradient" style="background:${imgGradient};"><span>${App._e(pc.place||item.place||'')}</span></div>`}
+          ${App._imgHtml(pc, { small: true })}
         </button>` : ''}
         <div class="disc-card-bd">
           <div class="disc-card-top">
@@ -113,7 +109,7 @@ async function _toggleLike(index) {
   const btn = document.getElementById('disc-like-' + index);
   if (btn?.disabled) return;
   if (btn) btn.disabled = true;
-  const letterId = item.id.replace('ltr-', '');
+  const letterId = String(item.id).replace('ltr-', '');
   try {
     if (item.liked) {
       const r = await api.unlikeCommunityLetter(letterId);

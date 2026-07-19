@@ -27,59 +27,33 @@ function renderWriteLetter() {
   const ls = (App.state.letters || []).slice(0, 6);
 
   el.innerHTML = `
-    <div class="env-scene" id="env-scene">
-
-      <!-- 步骤 1: 信纸 -->
-      <div class="env-letter-card" id="env-letter-card">
-        <textarea class="env-textarea" id="env-textarea"
-          placeholder="写一封给过去自己的信……"
-          rows="5" maxlength="2000"></textarea>
-        <div class="env-extra">
-          <div class="env-form-row">
-            <div class="env-form-group">
-              <label>推荐地点（可选）</label>
-              <input class="env-inp" id="env-place" placeholder="河堤 / 学校后门 / 旧市场">
-            </div>
-            <div class="env-form-group">
-              <label>希望的情绪（可选）</label>
-              <input class="env-inp" id="env-mood" placeholder="平静 / 鼓起勇气">
-            </div>
-          </div>
+    <div class="write-grid env-scene writing" id="env-scene">
+      <section class="letter-work-area">
+        <div class="env-letter-card" id="env-letter-card">
+          <div class="letter-date">TO MY PAST SELF · 第 ${App.state.currentDay || 0} 天</div>
+          <textarea class="env-textarea" id="env-textarea" placeholder="写一封给过去自己的信……" rows="9" maxlength="2000"></textarea>
+          <div class="env-extra"><div class="env-form-row">
+            <label class="env-form-group">推荐地点（可选）<input class="env-inp" id="env-place" placeholder="河堤 / 学校后门 / 旧市场"></label>
+            <label class="env-form-group">希望的情绪（可选）<input class="env-inp" id="env-mood" placeholder="平静 / 鼓起勇气"></label>
+          </div></div>
+          <div class="env-step-btns" id="env-step-btns"></div>
+          <div class="env-status" id="env-status" aria-live="polite">&nbsp;</div>
         </div>
-
-        <div class="env-step-btns" id="env-step-btns">
-          <!-- 按钮由 _renderButtons() 动态填充 -->
+        <div class="env-envelope-wrap" id="env-envelope-wrap">
+          <button type="button" class="env-envelope" id="env-envelope" onclick="enlargeEnvelope()" aria-label="查看信封">
+            <img class="env-envelope-art closed" src="assets/workbench/letters/envelope-closed.png" alt="闭合的复古信封">
+            <img class="env-envelope-art open" src="assets/workbench/letters/envelope-open.png" alt="打开的复古信封">
+            <img class="env-stamp" id="env-stamp" src="assets/workbench/letters/stamp.png" alt="复古邮票">
+            <span class="env-postmark" id="env-postmark"><span class="env-postmark-inner">故乡<br>${new Date().getFullYear()}</span></span>
+          </button>
+          <div class="env-step-btns" id="env-env-btns"></div>
+          <div class="env-status" id="env-env-status" aria-live="polite">&nbsp;</div>
         </div>
-        <div class="env-status" id="env-status">&nbsp;</div>
-      </div>
-
-      <!-- 步骤 2-4: 信封 + 邮戳 + 邮票 -->
-      <div class="env-envelope-wrap" id="env-envelope-wrap">
-        <div class="env-envelope" id="env-envelope" onclick="enlargeEnvelope()">
-          <img class="env-stamp" id="env-stamp" src="assets/letters/stamp.png" alt="邮票">
-          <div class="env-postmark" id="env-postmark">
-            <span class="env-postmark-inner">资兴<br>2026</span>
-          </div>
-        </div>
-        <div class="env-step-btns" id="env-env-btns">
-          <!-- 信封上的按钮 -->
-        </div>
-        <div class="env-status" id="env-env-status">&nbsp;</div>
-      </div>
-
-      <!-- 最近的信 -->
-      <div class="env-recent" id="env-recent">
-        <div class="rl-title">最近写过的信</div>
-        ${ls.length === 0
-          ? '<div class="rl-empty">还没有寄出过信。</div>'
-          : ls.map(_renderRecentItem).join('')}
-      </div>
-
-    </div>
-
-    <!-- 邮箱 -->
-    <div class="env-mailbox" id="env-mailbox">
-      <img src="assets/letters/env_mailbox.png" alt="邮箱">
+      </section>
+      <aside class="write-side">
+        <section class="dark-panel delivery-note"><span class="section-kicker">DELIVERY GUIDE</span><h3>信会怎样抵达？</h3><ol><li>把今天写进信纸</li><li>装进信封并贴好邮票</li><li>投进邮箱，等待明信片回来</li></ol><div class="env-mailbox" id="env-mailbox"><img src="assets/workbench/letters/mailbox.png" alt="打开的乡间邮箱"></div></section>
+        <section class="paper-panel recent-letters"><div class="panel-heading"><div><span class="section-kicker">RECENT LETTERS</span><h3>最近写过的信</h3></div></div><div class="env-recent" id="env-recent">${ls.length ? ls.map(_renderRecentItem).join('') : '<div class="rl-empty">还没有寄出过信。第一封会很特别。</div>'}</div></section>
+      </aside>
     </div>
   `;
 

@@ -1,82 +1,56 @@
-/* ===== 设置页 ===== */
+/* 设置页。 */
 
 function renderSettings() {
   const el = document.getElementById('page-settings');
   if (!el) return;
-  const s = App.state;
-  const userInfo = Auth.getUser();
-
+  const state = App.state;
+  const user = Auth.getUser();
   el.innerHTML = `
-    <div class="pg-hd">
-      <div class="eyebrow">Settings</div>
-      <h2>设置</h2>
-      <p>故乡信息、游戏状态和管理。</p>
-    </div>
-
-    ${userInfo ? `
-    <div class="set-sec">
-      <h3>账户</h3>
-      <div class="set-row"><label>用户名</label><span style="font-size:14px;color:var(--px-ink);">${App._e(userInfo.username)}</span></div>
-      <button class="btn btn-dng" onclick="doLogout()" style="margin-top:8px;">退出登录</button>
-    </div>` : ''}
-
-    <div class="set-sec">
-      <h3>故乡</h3>
-      <div class="set-row"><label>省</label><input class="inp" id="s-prov" value="${App._e(s.hometown?.province||'湖南')}"></div>
-      <div class="set-row"><label>市</label><input class="inp" id="s-city" value="${App._e(s.hometown?.city||'郴州')}"></div>
-      <div class="set-row"><label>区/县</label><input class="inp" id="s-county" value="${App._e(s.hometown?.county||'资兴')}"></div>
-      <div class="set-row"><label>故乡名称</label><input class="inp" id="s-name" value="${App._e(s.hometown?.hometownName||'资兴')}"></div>
-      <button class="btn btn-pri" onclick="saveHome()" style="margin-top:8px;">保存</button>
-      <div class="st" id="s-home-st">&nbsp;</div>
-    </div>
-    <div class="set-sec">
-      <h3>状态</h3>
-      <div class="set-row"><label>当前天数</label><span style="font-size:14px;color:var(--px-ink);">第 ${s.currentDay||0} 天</span></div>
-      <div class="set-row"><label>明信片</label><span style="font-size:14px;color:var(--px-ink);">${s.postcardCount} / ${s.postcardLimit} 张</span></div>
-      <div class="set-row"><label>记忆</label><span style="font-size:14px;color:var(--px-ink);">${(s.memories||[]).length} 条</span></div>
-      <div class="set-row"><label>信件</label><span style="font-size:14px;color:var(--px-ink);">${(s.letters||[]).length} 封</span></div>
-    </div>
-    <div class="set-sec">
-      <h3>后端</h3>
-      <div class="set-row"><label>地址</label><input class="inp" id="s-backend" value="${App._e(window.location.origin)}" readonly></div>
-      <button class="btn btn-sec" onclick="checkBack()">检查连接</button>
-      <div class="st" id="s-backend-st">&nbsp;</div>
+    <div class="settings-grid">
+      <section class="paper-panel setting-card account-card">
+        <span class="section-kicker">ACCOUNT</span><h2>账户</h2>
+        <div class="account-person"><span class="mailbox-avatar">${App._e((user?.username || '访')[0])}</span><div><strong>${App._e(user?.username || '访客')}</strong><small>${user ? '信箱已经上锁保管' : '当前正在随便看看'}</small></div></div>
+        ${user ? '<button class="btn btn-dng" onclick="doLogout()">退出登录</button>' : '<button class="btn btn-pri" onclick="showAuthGate()">登录信箱</button>'}
+      </section>
+      <section class="paper-panel setting-card hometown-card">
+        <span class="section-kicker">HOMETOWN</span><h2>故乡地址</h2>
+        <div class="form-grid two">
+          <label>省<input class="inp" id="s-prov" value="${App._e(state.hometown?.province || '湖南')}"></label>
+          <label>市<input class="inp" id="s-city" value="${App._e(state.hometown?.city || '郴州')}"></label>
+          <label>区 / 县<input class="inp" id="s-county" value="${App._e(state.hometown?.county || '资兴')}"></label>
+          <label>故乡名称<input class="inp" id="s-name" value="${App._e(state.hometown?.hometownName || '资兴')}"></label>
+        </div>
+        <div class="setting-actions"><button class="btn btn-pri" onclick="saveHome()">保存故乡</button><span class="st" id="s-home-st" aria-live="polite">&nbsp;</span></div>
+      </section>
+      <section class="dark-panel setting-card status-card">
+        <span class="section-kicker">JOURNEY STATUS</span><h2>旅程状态</h2>
+        <div class="stat-grid four"><div><strong>${state.currentDay || 0}</strong><span>天</span></div><div><strong>${(state.postcards || []).length}</strong><span>明信片</span></div><div><strong>${(state.memories || []).length}</strong><span>记忆</span></div><div><strong>${(state.letters || []).length}</strong><span>信件</span></div></div>
+      </section>
+      <section class="paper-panel setting-card connection-card">
+        <span class="section-kicker">CONNECTION</span><h2>邮路连接</h2><p>检查网页与故乡来信服务是否连通。</p>
+        <div class="setting-actions"><button class="btn btn-sec" onclick="checkBack()">检查连接</button><span class="st" id="s-backend-st" aria-live="polite">&nbsp;</span></div>
+      </section>
     </div>`;
 }
 
 async function saveHome() {
-  const s = document.getElementById('s-home-st');
-  const data = {
-    province: document.getElementById('s-prov').value,
-    city: document.getElementById('s-city').value,
-    county: document.getElementById('s-county').value,
-    hometown_name: document.getElementById('s-name').value,
-  };
-
+  const status = document.getElementById('s-home-st');
+  status.textContent = '保存中…';
   try {
-    const r = await api.initHometown(data);
-    if (r.ok) {
-      App.state.hometown = r.data.hometown;
-      App.state.profile = r.data.profile;
-      App.state.initialized = true;
-      s.textContent = '已保存';
-      App.showToast('已更新');
-    } else {
-      s.textContent = '失败';
-    }
-  } catch (e) {
-    s.textContent = '网络错误';
-    console.error(e);
-  }
+    const response = await api.initHometown({ province: document.getElementById('s-prov').value.trim(), city: document.getElementById('s-city').value.trim(), county: document.getElementById('s-county').value.trim(), hometown_name: document.getElementById('s-name').value.trim() });
+    if (!response.ok) throw new Error(response.error || '保存失败');
+    App.state.hometown = response.data.hometown;
+    App.state.profile = response.data.profile;
+    App.state.initialized = true;
+    App.syncShell();
+    status.textContent = '已保存';
+    App.showToast('故乡地址已更新');
+  } catch (error) { status.textContent = error.message || '网络错误'; }
 }
 
 async function checkBack() {
-  const s = document.getElementById('s-backend-st');
-  s.textContent = '检查中…';
-  try {
-    const r = await api.getMe();
-    s.textContent = r.ok ? '后端正常' : '异常';
-  } catch (e) {
-    s.textContent = '无法连接';
-  }
+  const status = document.getElementById('s-backend-st');
+  status.textContent = '检查中…';
+  try { const response = await api.getMe(); status.textContent = response.ok ? '邮路畅通' : '连接异常'; }
+  catch (error) { status.textContent = '无法连接'; }
 }

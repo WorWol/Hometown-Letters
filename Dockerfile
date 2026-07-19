@@ -16,7 +16,15 @@ WORKDIR /app
 
 # ── 安装 Python 依赖 ──
 COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+# oss2 is distributed as a source package and its isolated build step may
+# fail against mirrors that do not expose build dependencies. Install the
+# build tools explicitly, then disable isolation so pip can reuse them.
+ENV PIP_INDEX_URL=http://mirrors.cloud.aliyuncs.com/pypi/simple/ \
+    PIP_TRUSTED_HOST=mirrors.cloud.aliyuncs.com \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=5
+RUN pip install --no-cache-dir setuptools wheel \
+    && pip install --no-cache-dir --no-build-isolation -r /app/backend/requirements.txt
 
 # ── 复制全部代码 ──
 COPY . /app/

@@ -1,34 +1,28 @@
-/* ===== 明信片收藏页 (Godot PostcardsScene) ===== */
+/* 明信片相册墙。 */
 
 function renderPostcards() {
   const el = document.getElementById('page-postcards');
   if (!el) return;
-  const all = App.state.postcards||[];
-  const filterText = (document.getElementById('pc-filter')?.value||'').trim().toLowerCase();
-  const f = filterText ? all.filter(pc => `${pc.place||''} ${pc.mood||''} ${(pc.tags||[]).join(' ')} ${pc.title||''} ${pc.body||''}`.toLowerCase().includes(filterText)) : all;
-
+  const all = App.state.postcards || [];
+  const hadSearchFocus = document.activeElement?.id === 'pc-filter';
+  const previous = document.getElementById('pc-filter')?.value || '';
+  const query = previous.trim().toLowerCase();
+  const filtered = query ? all.filter(pc => `${pc.place || ''} ${pc.mood || ''} ${(pc.tags || pc.keywords || []).join(' ')} ${pc.title || ''} ${pc.body || ''}`.toLowerCase().includes(query)) : all;
+  window._postcardWall = filtered;
   el.innerHTML = `
-    <div class="pg-hd">
-      <h2>明信片收藏</h2>
-      <p>所有已经收到的明信片都在这里，像一本不断生长的画册。</p>
-    </div>
-    <div class="pc-g-hd">
-      <span style="font-size:13.5px;color:var(--px-ink-muted);">${f.length} 张明信片</span>
-      <input class="inp" id="pc-filter" placeholder="地点 / 标签 / 情绪" value="${App._e(filterText)}" oninput="renderPostcards()">
-    </div>
-    ${f.length===0?`<div class="g-empty"><p>${filterText?'没有匹配的明信片':'这里暂时是空的。去桌面推进几天吧。'}</p></div>`
-      :`<div class="pc-g">${f.map((pc,i)=>`
-        <div class="g-card" onclick="App.showPostcardDetail(pcf_${i})">
-          ${pc.imageThumbUrl?`<img src="${App._e(pc.imageThumbUrl)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">`:''}
-          <div class="info">
-            <div class="ti">${App._e(pc.title||'无题')}</div>
-            <div class="lo">${App._e(pc.place||'')}${pc.createdAt?' · '+new Date(pc.createdAt).toLocaleDateString('zh-CN'):''}</div>
-          </div>
-        </div>`).join('')}</div>`}
-  `;
-  window._pcf = f;
-  el.querySelectorAll('[onclick*="pcf_"]').forEach(el2=>{
-    const m = el2.getAttribute('onclick').match(/pcf_(\d+)/);
-    if (m) el2.setAttribute('onclick',`App.showPostcardDetail(window._pcf[${parseInt(m[1])}])`);
-  });
+    <section class="album-toolbar paper-panel">
+      <div><span class="section-kicker">YOUR POSTCARD ALBUM</span><h2>${filtered.length} 张沿途画面</h2><p>按地点、标签或情绪翻找一张旧照片。</p></div>
+      <label class="search-field"><span>搜索明信片</span><input class="inp" id="pc-filter" placeholder="地点 / 标签 / 情绪" value="${App._e(previous)}" oninput="renderPostcards()"></label>
+    </section>
+    ${filtered.length ? `<div class="postcard-wall">${filtered.map((pc, index) => `
+      <button class="album-card" onclick="App.showPostcardDetail(window._postcardWall[${index}])">
+        <span class="album-image">${App._imgHtml(pc, { small: true })}</span>
+        <span class="album-copy"><small>${App._e(pc.place || '沿途')}${pc.mood ? ` · ${App._e(pc.mood)}` : ''}</small><strong>${App._e(pc.title || '无题明信片')}</strong><em>${pc.createdAt ? new Date(pc.createdAt).toLocaleDateString('zh-CN') : ''}</em></span>
+      </button>`).join('')}</div>` : `
+      <div class="visual-empty large-empty paper-panel"><img src="assets/workbench/empty-mailbox-card.webp" alt="空白相册桌面"><div><h3>${query ? '没有找到这张记忆' : '相册墙还是空的'}</h3><p>${query ? '换一个地点或情绪试试。' : '寄出一封信，明信片会沿着时间回来。'}</p>${query ? '' : '<button class="btn btn-pri" onclick="App.navigate(\'write_letter\')">去写信</button>'}</div></div>`}`;
+  const input = document.getElementById('pc-filter');
+  if (input && hadSearchFocus) {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
 }
