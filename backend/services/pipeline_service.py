@@ -25,7 +25,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Letter, Postcard, User
-from services.image_storage import get_image_url, save_image
+from services.image_storage import delete_image_variants, get_image_url, save_image_variants
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,7 @@ class LetterPipeline:
     ) -> dict:
         """执行完整的写信管道，返回 {ok, data/error}"""
         logger.info("=== pipeline start user=%s day=%s ===", user.id, user.current_day)
+        image_keys: dict[str, str] = {}
         try:
             hometown = await self._load_user_hometown(db, user)
 
@@ -83,86 +84,17 @@ class LetterPipeline:
             )
 
             # 直接用 core_place 或 place_hint 作为地点
-            core_place = analysis.get("core_place", "") or place_hint or "故乡"
+            core_place = analysis["core_place"]
 
-            # ── 先保存信件（在昂贵的 LLM 调用之前，保证不丢） ──
-            effective_mood = mood_hint or analysis.get("emotional_tone", "平静")
-            new_day = user.current_day + 1
+            # 所有外部步骤成功后，再和明信片一起保存信件。
+            effective_mood = mood_hint or analysis["emotional_tone"]
 
-            letter = Letter(
-                user_id=user.id,
-                text=text,
-                place=core_place,
-                mood=effective_mood,
-                timestamp=datetime.now(timezone.utc),
-            )
-            db.add(letter)
-            user.current_day = new_day
-            await db.flush()
-            logger.info("letter saved: id=%s day=%s", letter.id, new_day)
-
-            # ── 图片搜索（记忆点增强）──
-            logger.info("STEP 2: search images (enriched with memorable spots)")
-            # 获取原始搜索关键词
-            search_keywords = analysis.get("search_keywords", [])
-            if not search_keywords:
-                geo = f"{hometown.get('province','')} {hometown.get('city','')} {hometown.get('county','')}"
-                search_keywords = [f"{geo} {core_place}".strip()]
-
-            # 尝试提取记忆点，生成增强关键词
-            enriched_kws: list[str] = []
-            try:
-                spots = await self._get_memorable_spots(core_place)
-                if len(spots) > 1:
-                    # 空间集 → 用 "{地点} {记忆点}" 搜索
-                    enriched_kws = [f"{core_place} {s}" for s in spots]
-                    logger.info("enriched spots: %s", enriched_kws)
-                else:
-                    # 本身就是具体点 → 不做增强
-                    logger.info("core_place is a specific spot, skip enrichment")
-            except Exception as e:
-                logger.warning("memorable spots extraction failed: %s", e)
-
-            # 搜索：增强词优先，原始词替补
-            all_keywords = enriched_kws + search_keywords
-            all_image_urls: list[str] = []
-            seen_urls: set[str] = set()
-            for kw in all_keywords:
-                if len(all_image_urls) >= 20:
-                    break
-                try:
-                    urls = await self.search.search_images(kw, num=6)
-                    for url in urls:
-                        if url not in seen_urls:
-                            seen_urls.add(url)
-                            all_image_urls.append(url)
-                except Exception:
-                    pass
-            logger.info(
-                "search: %d keywords → %d unique images",
-                len(all_keywords), len(all_image_urls),
-            )
-
-            # 回退：增强搜索图片不够
-            if len(all_image_urls) < 10 and enriched_kws:
-                logger.info("enriched search yielded only %d images, retrying with original keywords",
-                            len(all_image_urls))
-                for kw in search_keywords:
-                    try:
-                        urls = await self.search.search_images(kw, num=8)
-                        for url in urls:
-                            if url not in seen_urls:
-                                seen_urls.add(url)
-                                all_image_urls.append(url)
-                    except Exception:
-                        pass
-
-            # 终极回退
+            # ── 图片搜索：只执行分析结果中的第一条关键词 ──
+            logger.info("STEP 2: search images")
+            search_keywords = analysis["search_keywords"]
+            all_image_urls = await self.search.search_images(search_keywords[0], num=5)
             if not all_image_urls:
-                geo = f"{hometown.get('province','')} {hometown.get('city','')} {hometown.get('county','')}"
-                all_image_urls = await self.search.search_images(
-                    f"{geo} {core_place}".strip(), num=6
-                )
+                raise ValueError("image search returned no results")
 
             # ── 图片筛选 ──
             logger.info("STEP 3: filter images by letter themes")
@@ -170,47 +102,26 @@ class LetterPipeline:
                 all_image_urls, analysis
             )
 
-            # ── 搜索文字 ──
-            logger.info("STEP 4: search text")
-            text_info = await self.search.search_text(core_place, num=3)
-            context_str = "；".join(
-                [item["content"][:120] for item in text_info[:3]]
-            ) if text_info else ""
-
             # ── 生成诗/标题/正文 ──
-            logger.info("STEP 5: poem/title/body (letter-informed)")
+            logger.info("STEP 4: poem/title/body (letter-informed)")
             simple_landmark = {"name": core_place, "description": ""}
-            poem = self.poem_svc.generate_poem(simple_landmark, context_str, analysis)
+            poem = self.poem_svc.generate_poem(simple_landmark, "", analysis)
             title = self.poem_svc.generate_title(simple_landmark, poem, analysis, user_context)
             body_text = self.poem_svc.generate_body(simple_landmark, poem, text, analysis, user_context)
 
             # ── 图像提示词 ──
-            logger.info("STEP 6: image prompt (from analysis)")
-            image_prompt = analysis.get("image_prompt", "")
-            if not image_prompt:
-                image_prompt = self.poem_svc.generate_image_prompt(
-                    simple_landmark, context_str
-                )
+            logger.info("STEP 5: image prompt (from analysis)")
+            image_prompt = analysis["image_prompt"]
 
             # ── 生图 ──
-            logger.info("STEP 7: generate image")
-            from services.image_service import ImageService as ImgSvc
-            ref_images = []
-            if filtered_urls:
-                encoded = await ImgSvc.download_and_encode(filtered_urls[0])
-                if encoded:
-                    ref_images.append(encoded)
-                    tone = analysis.get("emotional_tone", "warm and nostalgic")
-                    image_prompt = (
-                        f"Transform the reference photo into a 16-bit pixel art scene. "
-                        f"Keep the same composition, buildings, and key elements. "
-                        f"Aim for a {tone} atmosphere. "
-                        f"Do NOT change the subject or add unrelated elements. "
-                        f"Simply pixelate and stylize the existing scene."
-                    )
-                else:
-                    image_prompt = analysis.get("image_prompt", image_prompt)
-            gen_result = await self.image_gen.generate(image_prompt, reference_images=ref_images)
+            logger.info("STEP 6: generate image")
+            from services.image_service import ImageService
+            if not filtered_urls:
+                raise ValueError("image selection returned no results")
+            reference_image = await ImageService.download_and_encode(filtered_urls[0])
+            gen_result = await self.image_gen.generate(
+                image_prompt, reference_images=[reference_image]
+            )
 
             # ── 生成 ID ──
             pc_id = (
@@ -219,36 +130,24 @@ class LetterPipeline:
             )
 
             # ── 保存图片到文件系统 ──
-            local_image_url = ""
-            stored_image_id = ""
-            gen_image_url = gen_result.get("url", "")
-            if gen_image_url:
-                try:
-                    image_data = await ImgSvc.download_image_bytes(gen_image_url)
-                    if image_data:
-                        await save_image(pc_id, image_data, "image/jpeg")
-                        stored_image_id = pc_id
-                        local_image_url = get_image_url(pc_id)
-                    else:
-                        logger.warning("gen image download returned empty, using local fallback")
-                except Exception as dl_err:
-                    logger.warning("image download error: %s, using local fallback", dl_err)
-            elif filtered_urls:
-                try:
-                    fallback_data = await ImgSvc.download_image_bytes(filtered_urls[0])
-                    if fallback_data:
-                        await save_image(pc_id, fallback_data, "image/jpeg")
-                        stored_image_id = pc_id
-                        local_image_url = get_image_url(pc_id)
-                    else:
-                        # 下载失败，不保存外链（太慢会卡页面），用空值让前端展示渐变占位图
-                        logger.warning("fallback image download returned empty, skipping external URL")
-                except Exception as e:
-                    logger.warning("fallback image download failed: %s, skipping external URL", e)
+            image_data = await ImageService.download_image_bytes(gen_result["url"])
+            image_keys = await save_image_variants(user.id, pc_id, image_data)
+            local_image_url = get_image_url(image_keys["card"])
 
-            # ── 组装明信片 ──
-            logger.info("STEP 8: assemble postcard")
+            # ── 保存信件和明信片 ──
+            logger.info("STEP 7: save letter and postcard")
             now_ts = datetime.now(timezone.utc).isoformat()
+            letter = Letter(
+                user_id=user.id,
+                text=text,
+                place=core_place,
+                mood=effective_mood,
+                timestamp=datetime.now(timezone.utc),
+            )
+            db.add(letter)
+            user.current_day += 1
+            await db.flush()
+            logger.info("letter saved: id=%s day=%s", letter.id, user.current_day)
 
             postcard = Postcard(
                 user_id=user.id,
@@ -259,22 +158,18 @@ class LetterPipeline:
                 landmark_id=None,
                 landmark_description="",
                 mood=effective_mood,
-                # 本地/OSS 保存成功时记录存储 ID；下载失败时保留外部
-                # 降级 URL，确保刷新状态后仍能展示，而不是指向 404。
-                image_path=stored_image_id or local_image_url,
+                image_thumb_key=image_keys.get("thumb", ""),
+                image_card_key=image_keys.get("card", ""),
+                image_original_key=image_keys.get("original", ""),
                 image_prompt=image_prompt,
                 search_image_urls=filtered_urls,
                 created_at=datetime.now(timezone.utc),
                 letter_text=text,
                 tags=[],
-                used_fallback=False,
             )
 
-            if not gen_result.get("ok") or not local_image_url:
-                postcard.used_fallback = True
-
             # ── 保存明信片 ──
-            logger.info("STEP 9: save postcard")
+            logger.info("save postcard")
             db.add(postcard)
             await db.flush()
 
@@ -282,8 +177,8 @@ class LetterPipeline:
             try:
                 await self.memory_svc.maybe_build_batch_memory(db, user.id, self.llm)
                 await self.memory_svc.rebuild_profile_from_batches(db, user.id, self.llm)
-            except Exception as pe:
-                logger.warning("batch memory/profile rebuild failed (non-fatal): %s", pe)
+            except Exception:
+                logger.exception("memory enrichment failed after postcard creation")
 
             logger.info("=== pipeline SUCCESS ===")
             return {
@@ -298,51 +193,25 @@ class LetterPipeline:
                     "landmarkDescription": "",
                     "mood": effective_mood,
                     "imageUrl": local_image_url,
+                    "imageThumbUrl": get_image_url(image_keys.get("thumb", "")),
+                    "imageOriginalUrl": get_image_url(image_keys.get("original", "")),
                     "imagePrompt": image_prompt,
                     "searchImageUrls": filtered_urls,
                     "createdAt": now_ts,
                     "letterText": text,
                     "tags": [],
-                    "usedFallback": postcard.used_fallback,
                 },
             }
 
         except Exception as e:
+            if image_keys:
+                try:
+                    await delete_image_variants(image_keys)
+                except Exception:
+                    logger.exception("image cleanup failed after pipeline error")
             tb = traceback.format_exc()
             logger.error("=== pipeline ERROR ===\n%s", tb)
             return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
-
-    async def _get_memorable_spots(self, place_name: str) -> list[str]:
-        """用 LLM 判断地点类型并提取记忆点
-
-        具体地点（桥、湖、建筑）→ 返回 [place_name]（不拆）
-        空间集（校园、公园、景区）→ 返回内部有画面感的子位置列表
-        """
-        prompt = (
-            f'判断「{place_name}」是一个具体的点（一栋建筑、一座桥、一个湖），'
-            f'还是一个大的空间（校园、公园、景区、街区）。\n\n'
-            f'如果是一个具体的点：只输出这个地点名称本身。\n\n'
-            f'如果是一个大的空间：列出内部最有画面感、最能承载情感记忆的 3-5 个具体位置。\n'
-            f'优先选有视觉特征（水、树、老建筑、光影）且能让人停留遐想的地方。\n'
-            f'避免纯功能区域（停车场、宿舍楼、办公楼）。\n\n'
-            f'每个地点 2-10 字。只输出地点名称，每行一个，不要编号，不要解释。'
-        )
-        try:
-            raw = self.llm.chat(
-                "你熟悉各类地点和空间的特征。",
-                prompt,
-                temperature=0.3,
-                max_tokens=100,
-            )
-            spots = [s.strip() for s in raw.strip().split("\n") if s.strip()]
-            # 过滤掉和 core_place 相同的返回值
-            spots = [s for s in spots if s != place_name]
-            if not spots:
-                return [place_name]
-            return spots[:5]
-        except Exception as e:
-            logger.warning("_get_memorable_spots LLM call failed: %s", e)
-            return [place_name]
 
     async def _load_user_hometown(self, db: AsyncSession, user: User) -> dict:
         from db.models import Hometown

@@ -101,9 +101,40 @@ class Settings:
     # ── 阿里云 OSS 对象存储 ──
     oss_access_key_id: str = field(default_factory=lambda: _env("OSS_ACCESS_KEY_ID", ""))
     oss_access_key_secret: str = field(default_factory=lambda: _env("OSS_ACCESS_KEY_SECRET", ""))
-    oss_endpoint: str = field(default_factory=lambda: _env("OSS_ENDPOINT", ""))
+    oss_upload_endpoint: str = field(
+        default_factory=lambda: _env("OSS_UPLOAD_ENDPOINT", "")
+    )
+    oss_public_endpoint: str = field(
+        default_factory=lambda: _env("OSS_PUBLIC_ENDPOINT", "")
+    )
     oss_bucket_name: str = field(default_factory=lambda: _env("OSS_BUCKET_NAME", ""))
-    oss_cdn_domain: str = field(default_factory=lambda: _env("OSS_CDN_DOMAIN", ""))
+    oss_object_prefix: str = field(
+        default_factory=lambda: _env("OSS_OBJECT_PREFIX", "postcards")
+    )
+    oss_asset_prefix: str = field(
+        default_factory=lambda: _env("OSS_ASSET_PREFIX", "assets")
+    )
+    oss_url_expire_seconds: int = field(
+        default_factory=lambda: int(_env("OSS_URL_EXPIRE_SECONDS", "900"))
+    )
+
+    # ── 运行配置 ──
+    storage_backend: str = field(default_factory=lambda: _env("STORAGE_BACKEND", "local"))
+    default_postcard_limit: int = field(
+        default_factory=lambda: int(_env("DEFAULT_POSTCARD_LIMIT", "5"))
+    )
+    log_retention_days: int = field(
+        default_factory=lambda: int(_env("LOG_RETENTION_DAYS", "7"))
+    )
+    event_retention_days: int = field(
+        default_factory=lambda: int(_env("EVENT_RETENTION_DAYS", "30"))
+    )
+    admin_log_lines: int = field(
+        default_factory=lambda: int(_env("ADMIN_LOG_LINES", "200"))
+    )
+    admin_token: str = field(default_factory=lambda: _env("ADMIN_TOKEN", ""))
+    environment: str = field(default_factory=lambda: _env("APP_ENV", "development"))
+    allowed_origins: str = field(default_factory=lambda: _env("ALLOWED_ORIGINS", ""))
 
     # ── 认证 ──
     secret_key: str = field(

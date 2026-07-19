@@ -23,6 +23,8 @@ class User(Base):
     username = Column(String(64), unique=True, nullable=False, index=True)
     hashed_password = Column(String(256), nullable=False)
     current_day = Column(Integer, default=0, nullable=False)
+    postcard_limit = Column(Integer, default=5, nullable=False)
+    postcard_count = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), nullable=False)
@@ -103,7 +105,6 @@ class Landmark(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
-
 # ──────────── postcards ────────────
 
 class Postcard(Base):
@@ -121,13 +122,14 @@ class Postcard(Base):
     landmark_id = Column(Integer, ForeignKey("landmarks.id"), nullable=True)
     landmark_description = Column(Text, default="")
     mood = Column(String(32), default="平静")
-    image_path = Column(String(512), default="")
+    image_thumb_key = Column(String(512), nullable=False, default="")
+    image_card_key = Column(String(512), nullable=False, default="")
+    image_original_key = Column(String(512), nullable=False, default="")
     image_prompt = Column(Text, default="")
     search_image_urls = Column(JSON, default=list)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     letter_text = Column(Text, default="")
     tags = Column(JSON, default=list)
-    used_fallback = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="postcards")
 
@@ -285,3 +287,23 @@ class LetterLike(Base):
 
     user = relationship("User", back_populates="letter_likes")
     letter = relationship("Letter", back_populates="likes")
+
+
+# ──────────── system events ────────────
+
+class SystemEvent(Base):
+    """本地可查询的运行事件，用于开发者后台和故障排查。"""
+    __tablename__ = "system_events"
+    __table_args__ = (
+        Index("ix_system_events_created", "created_at"),
+        Index("ix_system_events_level_created", "level", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    level = Column(String(16), nullable=False, default="info")
+    event_type = Column(String(64), nullable=False)
+    message = Column(Text, default="")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    request_id = Column(String(64), default="")
+    event_metadata = Column("metadata", JSON, default=dict)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
