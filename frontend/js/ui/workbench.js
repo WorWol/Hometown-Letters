@@ -21,6 +21,9 @@ App.syncShell = function syncShell() {
 App.navigate = function navigate(page) {
   const target = document.getElementById(`page-${page}`);
   if (!target) return;
+  if (this.currentPage === 'write_letter' && page !== 'write_letter' && typeof window.saveLetterDraft === 'function') {
+    window.saveLetterDraft({ silent: true });
+  }
   document.querySelectorAll('#app .page').forEach(node => node.classList.remove('active'));
   target.classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(button => {

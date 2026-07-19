@@ -17,12 +17,138 @@ let _busy = false;
 let _errorTimer = null;
 let _stampApplied = false;   // 邮戳是否已贴
 let _generation = 0;          // 递增计数器，用于拦截过期异步操作
+let _draftTimer = null;
+let _activeDraftKey = null;
+
+const LETTER_DRAFT_VERSION = 1;
+
+function _letterDraftKey() {
+  const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
+  const owner = user?.id || user?.username || 'guest';
+  return `hometown_letter_draft_v${LETTER_DRAFT_VERSION}_${String(owner)}`;
+}
+
+function _readLetterDraft() {
+  try {
+    const raw = localStorage.getItem(_activeDraftKey || _letterDraftKey());
+    if (!raw) return null;
+    const draft = JSON.parse(raw);
+    if (!draft || draft.version !== LETTER_DRAFT_VERSION) return null;
+    return draft;
+  } catch (error) {
+    console.warn('[write-letter] 无法读取本地草稿', error);
+    return null;
+  }
+}
+
+function _draftTimeLabel(timestamp) {
+  const elapsed = Date.now() - Number(timestamp || 0);
+  if (!timestamp || elapsed < 60000) return '刚刚';
+  if (elapsed < 3600000) return `${Math.max(1, Math.floor(elapsed / 60000))} 分钟前`;
+  if (elapsed < 86400000) return `${Math.floor(elapsed / 3600000)} 小时前`;
+  return new Date(timestamp).toLocaleDateString('zh-CN');
+}
+
+function _setDraftStatus(message, hasDraft = true) {
+  const status = document.getElementById('env-draft-status');
+  const clearButton = document.getElementById('env-clear-draft');
+  if (status) status.textContent = message;
+  if (clearButton) clearButton.hidden = !hasDraft;
+}
+
+function saveLetterDraft({ silent = false } = {}) {
+  if (_draftTimer) { clearTimeout(_draftTimer); _draftTimer = null; }
+  if (_curStep === LetterStep.SUCCESS) return false;
+  const textarea = document.getElementById('env-textarea');
+  const place = document.getElementById('env-place');
+  const mood = document.getElementById('env-mood');
+  if (!textarea && !place && !mood) return false;
+
+  const draft = {
+    version: LETTER_DRAFT_VERSION,
+    text: textarea?.value || '',
+    place: place?.value || '',
+    mood: mood?.value || '',
+    updatedAt: Date.now(),
+  };
+  const hasContent = Boolean(draft.text.trim() || draft.place.trim() || draft.mood.trim());
+
+  try {
+    const storageKey = _activeDraftKey || _letterDraftKey();
+    if (hasContent) localStorage.setItem(storageKey, JSON.stringify(draft));
+    else localStorage.removeItem(storageKey);
+    if (!silent) _setDraftStatus(hasContent ? '草稿已自动保存 · 刚刚' : '草稿会自动保存', hasContent);
+    return true;
+  } catch (error) {
+    console.warn('[write-letter] 无法保存本地草稿', error);
+    if (!silent) _setDraftStatus('草稿保存失败，请暂时不要关闭页面', hasContent);
+    return false;
+  }
+}
+
+function _scheduleLetterDraftSave() {
+  // 输入发生时立即落盘，防抖只用于减少状态文字闪动。
+  // 这样即使用户下一刻就切页，也不会丢掉最后几个字。
+  const saved = saveLetterDraft({ silent: true });
+  const hasContent = Boolean(
+    document.getElementById('env-textarea')?.value.trim() ||
+    document.getElementById('env-place')?.value.trim() ||
+    document.getElementById('env-mood')?.value.trim()
+  );
+  if (!saved) {
+    _setDraftStatus('草稿保存失败，请暂时不要关闭页面', hasContent);
+    return;
+  }
+  _setDraftStatus(hasContent ? '草稿已保存' : '草稿会自动保存', hasContent);
+  _draftTimer = setTimeout(() => {
+    _draftTimer = null;
+    _setDraftStatus(hasContent ? '草稿已自动保存 · 刚刚' : '草稿会自动保存', hasContent);
+  }, 450);
+}
+
+function clearLetterDraft() {
+  if (!window.confirm('确定清空这封尚未寄出的草稿吗？')) return;
+  _clearStoredLetterDraft();
+  ['env-textarea', 'env-place', 'env-mood'].forEach(id => {
+    const field = document.getElementById(id);
+    if (field) field.value = '';
+  });
+  _setDraftStatus('草稿已清空', false);
+  document.getElementById('env-textarea')?.focus({ preventScroll: true });
+}
+
+function _restoreLetterDraft() {
+  const draft = _readLetterDraft();
+  if (!draft) {
+    _setDraftStatus('草稿会自动保存', false);
+    return false;
+  }
+  const fields = [
+    ['env-textarea', draft.text],
+    ['env-place', draft.place],
+    ['env-mood', draft.mood],
+  ];
+  fields.forEach(([id, value]) => {
+    const field = document.getElementById(id);
+    if (field) field.value = value || '';
+  });
+  _setDraftStatus(`已恢复${_draftTimeLabel(draft.updatedAt)}保存的草稿`, true);
+  return true;
+}
+
+function _clearStoredLetterDraft() {
+  if (_draftTimer) { clearTimeout(_draftTimer); _draftTimer = null; }
+  try { localStorage.removeItem(_activeDraftKey || _letterDraftKey()); } catch (error) {
+    console.warn('[write-letter] 无法清除本地草稿', error);
+  }
+}
 
 /* ================ RENDER ================ */
 
 function renderWriteLetter() {
   const el = document.getElementById('page-write_letter');
   if (!el) return;
+  _activeDraftKey = _letterDraftKey();
 
   const ls = (App.state.letters || []).slice(0, 6);
 
@@ -36,6 +162,7 @@ function renderWriteLetter() {
             <label class="env-form-group">推荐地点（可选）<input class="env-inp" id="env-place" placeholder="河堤 / 学校后门 / 旧市场"></label>
             <label class="env-form-group">希望的情绪（可选）<input class="env-inp" id="env-mood" placeholder="平静 / 鼓起勇气"></label>
           </div></div>
+          <div class="env-draft-bar"><span id="env-draft-status" aria-live="polite">草稿会自动保存</span><button type="button" id="env-clear-draft" class="env-clear-draft" onclick="clearLetterDraft()" hidden>清空草稿</button></div>
           <div class="env-step-btns" id="env-step-btns"></div>
           <div class="env-status" id="env-status" aria-live="polite">&nbsp;</div>
         </div>
@@ -62,6 +189,10 @@ function renderWriteLetter() {
   _stampApplied = false;
   _generation++;  // 标记新一轮渲染，废弃之前的异步操作
   _renderButtons();
+  _restoreLetterDraft();
+  ['env-textarea', 'env-place', 'env-mood'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', _scheduleLetterDraftSave);
+  });
 
   // 聚焦 textarea
   setTimeout(() => {
@@ -241,6 +372,7 @@ async function deliverLetter() {
   if (apiResult && apiResult.ok) {
     // → SUCCESS
     _curStep = LetterStep.SUCCESS;
+    _clearStoredLetterDraft();
     if (scene) scene.classList.add('success');
     if (status) status.textContent = '投递成功！';
 
@@ -256,7 +388,7 @@ async function deliverLetter() {
     setTimeout(() => {
       if (_generation !== _savedGen) return;
       if (apiResult.data) App.showPostcardDetail(apiResult.data);
-      _resetScene();
+      _resetScene(false);
     }, 600);
 
   } else {
@@ -329,16 +461,16 @@ function _animateEnvelopeToMailbox() {
 
 /* ================ RESET ================ */
 
-function _resetScene() {
+function _resetScene(preserveInput = true) {
   if (_errorTimer) { clearTimeout(_errorTimer); _errorTimer = null; }
 
   // Preserve user input
   const oldTa = document.getElementById('env-textarea');
   const oldPlace = document.getElementById('env-place');
   const oldMood = document.getElementById('env-mood');
-  const savedText = oldTa ? oldTa.value : '';
-  const savedPlace = oldPlace ? oldPlace.value : '';
-  const savedMood = oldMood ? oldMood.value : '';
+  const savedText = preserveInput && oldTa ? oldTa.value : '';
+  const savedPlace = preserveInput && oldPlace ? oldPlace.value : '';
+  const savedMood = preserveInput && oldMood ? oldMood.value : '';
 
   _curStep = LetterStep.WRITING;
   _busy = false;
@@ -389,3 +521,8 @@ function enlargeEnvelope() {
 function _sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+window.addEventListener('pagehide', () => saveLetterDraft({ silent: true }));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveLetterDraft({ silent: true });
+});

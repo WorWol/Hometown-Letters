@@ -410,6 +410,9 @@ textarea { resize: vertical; }
 .env-textarea { min-height: 365px; padding: 14px 8px; background: transparent; border: 0; border-radius: 0; line-height: 2.05; font-size: 15px; }
 .env-textarea:focus { outline: 0; }
 .env-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+.env-draft-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; margin-top: 10px; color: var(--ink-faint); font-size: 11px; }
+.env-clear-draft { padding: 3px 0; color: var(--burgundy-dark); background: transparent; border: 0; border-bottom: 1px dashed currentColor; font: 10px var(--font-pixel); cursor: pointer; }
+.env-clear-draft:hover, .env-clear-draft:focus-visible { color: var(--burgundy); }
 .env-inp { background: rgba(255,255,255,.42); }
 .env-step-btns { display: flex; justify-content: center; margin-top: 18px; }
 .env-btn { min-width: 220px; }
