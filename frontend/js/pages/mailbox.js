@@ -35,7 +35,7 @@ function _renderMailboxCore(el) {
           <div class="visual-empty"><div><p>加载中……</p></div></div>
         </div>
       </section>
-      <aside class="mailbox-side">
+      <aside class="mailbox-side" aria-label="信箱操作与状态">
         <section class="dark-panel mailbox-compose-card">
           <span class="section-kicker">SEND A LETTER</span>
           <h3>寄出一封信</h3>
@@ -110,12 +110,12 @@ function _updateStats(unread, total) {
 function _renderMailList(container, mails, type) {
   if (!mails || !mails.length) {
     container.innerHTML = `
-      <div class="visual-empty mailbox-empty">
-        <img src="assets/workbench/empty-mailbox-card.webp" alt="暖灯下的空信箱">
+      <div class="visual-empty page-empty-scene mailbox-empty">
+        <img src="assets/workbench/empty-mailbox-scene.webp" alt="清晨桌面上的乡间邮箱与待寄信件" onerror="this.closest('.page-empty-scene').classList.add('image-missing');this.remove()">
         <div>
           <h3>${type === 'inbox' ? '收件箱还是空的' : '还没有寄出过信'}</h3>
           <p>${type === 'inbox' ? '还没有人给你寄信，或者给自己写一封吧。' : '把第一封信寄出去，它会沿着邮路抵达另一个人的故乡。'}</p>
-          ${type === 'outbox' ? '<button class="btn btn-pri" onclick="_showComposeMail()">寄出第一封</button>' : ''}
+          <button class="btn btn-pri" onclick="_showComposeMail()">${type === 'inbox' ? '写一封信' : '寄出第一封'}</button>
         </div>
       </div>`;
     return;
