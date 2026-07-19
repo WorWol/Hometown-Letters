@@ -7,9 +7,7 @@ function renderMemories() {
   const profile = App.state.pastSelfProfile || {};
   const places = profile.latent_place_affinities || [];
   const sensory = profile.sensory_biases || [];
-  const identity = profile.identity_signals || [];
-  const recent = profile.recent_memory_signals || [];
-  const hasProfile = places.length || sensory.length || identity.length || recent.length;
+  const hasProfile = places.length || sensory.length;
   window._memories = memories;
   el.innerHTML = `
     <div class="memory-grid">
@@ -20,25 +18,15 @@ function renderMemories() {
       </section>
       <aside class="profile-card memory-profile-card dark-panel" aria-label="过去的我">
         <div class="profile-portrait" aria-hidden="true"><div class="profile-frame"><div class="profile-silhouette"><span>我</span></div></div></div>
-        <span class="section-kicker">THE PAST ME</span><h2>过去的我</h2><p>${App._e(profile.summary || '写下一些记忆后，过去的轮廓会慢慢在这里浮现。')}</p>
+        <span class="section-kicker">THE PAST ME</span><h2>过去的我</h2>
         ${hasProfile ? `<div class="profile-groups">
           ${places.length ? `<div><h3>总会想起的地方</h3><div class="modal-tags">${places.slice(0, 6).map(item => `<span class="tag">${App._e(item.name || '')}</span>`).join('')}</div></div>` : ''}
           ${sensory.length ? `<div><h3>风、光和气味</h3><div class="modal-tags">${sensory.slice(0, 6).map(item => `<span class="tag">${App._e(item.name || '')}</span>`).join('')}</div></div>` : ''}
-          ${identity.length ? `<div><h3>那时的我</h3>${identity.slice(0, 4).map(item => `<p class="profile-line">${App._e(_il(item.name || ''))}</p>`).join('')}</div>` : ''}
-          ${recent.length ? `<div><h3>慢慢留下来的</h3>${recent.slice(0, 4).map(item => `<p class="profile-line">最近总会想起 ${App._e(item.name || '')}</p>`).join('')}</div>` : ''}
         </div>` : ''}
       </aside>
     </div>`;
 }
 
-function _il(n) {
-  if(!n) return '慢慢也成了过去的我的一部分。';
-  if(n.includes('不爱说')||n.includes('安静')) return '不太会一下子说很多话。';
-  if(n.includes('细')||n.includes('小')) return '会把很小的事情记很久。';
-  if(n.includes('走')||n.includes('停')||n.includes('看')) return '总会在热闹结束后多停一下。';
-  if(n.includes('风')||n.includes('空气')||n.includes('水')) return '会被风和空气里的变化悄悄打动。';
-  return `${n}，慢慢也成了过去的我的一部分。`;
-}
 function _as(s) {
   switch(s){case'pending':return'正在整理…';case'completed':return'已归档';case'failed':return'稍后重试';default:return'';}
 }

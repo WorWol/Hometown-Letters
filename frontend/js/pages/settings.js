@@ -7,11 +7,6 @@ function renderSettings() {
   const user = Auth.getUser();
   el.innerHTML = `
     <div class="settings-grid">
-      <section class="paper-panel setting-card account-card">
-        <span class="section-kicker">ACCOUNT</span><h2>账户</h2>
-        <div class="account-person"><span class="mailbox-avatar">${App._e((user?.username || '访')[0])}</span><div><strong>${App._e(user?.username || '访客')}</strong><small>${user ? '信箱已经上锁保管' : '当前正在随便看看'}</small></div></div>
-        ${user ? '<button class="btn btn-dng" onclick="doLogout()">退出登录</button>' : '<button class="btn btn-pri" onclick="showAuthGate()">登录信箱</button>'}
-      </section>
       <section class="paper-panel setting-card hometown-card">
         <span class="section-kicker">HOMETOWN</span><h2>故乡地址</h2>
         <div class="form-grid two">
@@ -21,6 +16,11 @@ function renderSettings() {
           <label>故乡名称<input class="inp" id="s-name" value="${App._e(state.hometown?.hometownName || '资兴')}"></label>
         </div>
         <div class="setting-actions"><button class="btn btn-pri" onclick="saveHome()">保存故乡</button><span class="st" id="s-home-st" aria-live="polite">&nbsp;</span></div>
+      </section>
+      <section class="paper-panel setting-card account-card">
+        <span class="section-kicker">ACCOUNT</span><h2>账户</h2>
+        <div class="account-person"><span class="mailbox-avatar">${App._e((user?.username || '访')[0])}</span><div><strong>${App._e(user?.username || '访客')}</strong><small>${user ? '信箱已经上锁保管' : '当前正在随便看看'}</small></div></div>
+        ${user ? '<button class="btn btn-dng" onclick="doLogout()">退出登录</button>' : '<button class="btn btn-pri" onclick="showAuthGate()">登录信箱</button>'}
       </section>
       <section class="dark-panel setting-card status-card">
         <span class="section-kicker">JOURNEY STATUS</span><h2>旅程状态</h2>

@@ -16,13 +16,13 @@ function renderGame() {
     <div class="game-grid">
       <section class="cork-panel game-board">
         <div class="panel-heading">
-          <div><span class="section-kicker">PINNED MOMENTS</span><h2>钉在板上的近况</h2></div>
+          <div><span class="section-kicker">PINNED MOMENTS</span><h2>钉在回忆板上的明信片</h2></div>
           <button class="text-button" onclick="App.navigate('postcards')">打开相册墙 →</button>
         </div>
         ${pinned.length ? `<div class="pinned-grid">${pinned.map((pc, index) => `
           <button class="pinned-card tilt-${index + 1}" onclick="App.showPostcardDetail(window._gamePinned[${index}])">
             <span class="push-pin" aria-hidden="true"></span>
-            <span class="pinned-image">${App._imgHtml(pc, { small: true })}</span>
+            <span class="pinned-image">${App._backgroundMediaHtml(pc, { small: true })}</span>
             <span class="pinned-copy"><small>${App._e(pc.place || '沿途')}</small><strong>${App._e(pc.title || '无题明信片')}</strong></span>
           </button>`).join('')}</div>` : `
           <div class="visual-empty large-empty">

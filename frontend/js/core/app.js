@@ -143,7 +143,26 @@ const App = {
     const compact = options.small ? ' compact' : '';
     const state = imageUrl ? ' has-image' : ' is-fallback';
     return `<div class="media-frame${compact}${state}" style="--media-fallback:${this._imgGradient(pc.place, pc.mood)}">
-      ${imageUrl ? `<img src="${this._e(imageUrl)}" alt="${place}的明信片画面" loading="lazy" onload="App.handleMediaLoad(this)" onerror="App.handleMediaError(this)">` : ''}
+      ${imageUrl ? `<img src="${this._e(imageUrl)}" alt="${place}的明信片画面" loading="lazy" draggable="false" data-no-visual-search="true" onload="App.handleMediaLoad(this)" onerror="App.handleMediaError(this)">` : ''}
+      <div class="media-fallback" aria-hidden="${imageUrl ? 'true' : 'false'}">
+        <span class="media-fallback-mark">□</span><strong>画面暂缺</strong><small>${place}${mood ? ` · ${mood}` : ''}</small>
+      </div>
+    </div>`;
+  },
+
+  _backgroundMediaHtml(postcard = {}, options = {}) {
+    const pc = this.normalizePostcard(postcard) || {};
+    const imageUrl = pc.imageUrl;
+    const place = this._e(pc.place || '沿途');
+    const mood = this._e(pc.mood || '');
+    const compact = options.small ? ' compact' : '';
+    const state = imageUrl ? ' has-image' : ' is-fallback';
+    const fallback = this._imgGradient(pc.place, pc.mood);
+    const background = imageUrl
+      ? `background-image:url(${this._e(JSON.stringify(imageUrl))}),${fallback}`
+      : `background-image:${fallback}`;
+    return `<div class="media-frame background-media${compact}${state}" style="--media-fallback:${fallback};${background}">
+      ${imageUrl ? `<img class="media-probe" src="${this._e(imageUrl)}" alt="" aria-hidden="true" loading="lazy" draggable="false" data-no-visual-search="true" onload="App.handleMediaLoad(this)" onerror="App.handleMediaError(this)">` : ''}
       <div class="media-fallback" aria-hidden="${imageUrl ? 'true' : 'false'}">
         <span class="media-fallback-mark">□</span><strong>画面暂缺</strong><small>${place}${mood ? ` · ${mood}` : ''}</small>
       </div>
@@ -168,9 +187,35 @@ function enlargePostcardImage(source) {
   overlay.className = 'image-lightbox';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', '明信片放大预览');
+  overlay.tabIndex = -1;
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'lightbox-close';
+  closeButton.setAttribute('aria-label', '缩小图片');
+  closeButton.textContent = '×';
+
   const clone = source.cloneNode(true);
+  clone.removeAttribute('onclick');
+  clone.onclick = null;
+  clone.removeAttribute('aria-label');
+  clone.setAttribute('aria-hidden', 'true');
+  clone.tabIndex = -1;
   clone.classList.add('lightbox-media');
+  overlay.appendChild(closeButton);
   overlay.appendChild(clone);
-  overlay.addEventListener('click', () => overlay.remove());
+
+  const close = () => {
+    document.removeEventListener('keydown', onKeydown);
+    overlay.remove();
+  };
+  const onKeydown = (event) => {
+    if (event.key === 'Escape') close();
+  };
+
+  overlay.addEventListener('click', close);
+  document.addEventListener('keydown', onKeydown);
   document.body.appendChild(overlay);
+  closeButton.focus({ preventScroll: true });
 }
