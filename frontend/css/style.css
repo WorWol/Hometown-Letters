@@ -20,24 +20,9 @@
   --px-shadow:   #4A3F35;
   --px-bg:       #EDE8DD;
 
-  /* === Legacy aliases for backward compatibility === */
-  --text:        var(--px-ink);
-  --text-sec:    var(--px-ink-sec);
-  --text-muted:  var(--px-ink-muted);
-  --cream:       var(--px-cream);
-  --desk:        #DEEDD7;
-  --green:       var(--px-sage-dk);
-  --green-lt:    var(--px-sage);
-  --green-bd:    rgba(168,213,186,0.86);
-  --blue:        #35515C;
-  --blue-lt:     #AFCBFF;
-  --divider:     rgba(168,213,186,0.35);
-  --brd:         rgba(168,213,186,0.35);
-
-  /* Deprecated (kept for JS compatibility) */
-  --dk-text:     var(--px-ink);
-  --dk-sec:      var(--px-ink-sec);
-  --dk-muted:    var(--px-ink-muted);
+  --px-accent-blue:      #35515C;
+  --px-accent-blue-light:#AFCBFF;
+  --px-divider:          rgba(168,213,186,0.35);
 
   /* === Fonts === */
   --font-pixel:  "Zpix", "Press Start 2P", monospace;
@@ -466,7 +451,7 @@ img {
 /* Tags — pixel rectangles */
 .tag {
   display: inline-block; padding: 3px 11px;
-  font-size: 11px; background: var(--blue-lt); color: var(--blue);
+  font-size: 11px; background: var(--px-accent-blue-light); color: var(--px-accent-blue);
   margin: 2px 3px 2px 0;
   box-shadow:
     inset 1px 1px 0 rgba(0,0,0,0.06),
@@ -973,7 +958,7 @@ img {
   font-family: var(--font-display);
   font-style: italic;
   white-space: pre-wrap;
-  border-top: 1px solid var(--divider);
+  border-top: 1px solid var(--px-divider);
   padding-top: 12px; margin: 0 24px;
 }
 .modal-tags { padding: 0 24px 10px; }
@@ -1486,7 +1471,7 @@ img {
 .pg { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
 .pi {
   padding: 2px 10px; font-size: 11px;
-  background: var(--blue-lt); color: var(--blue);
+  background: var(--px-accent-blue-light); color: var(--px-accent-blue);
   box-shadow: inset 1px 1px 0 rgba(0,0,0,0.05);
   font-family: var(--font-pixel);
 }
@@ -2862,7 +2847,7 @@ body.workbench {
   height: 34px;
   border-radius: 50%;
   background: var(--px-sage);
-  color: var(--dk-text);
+  color: var(--px-ink);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2880,15 +2865,15 @@ body.workbench {
 }
 .mailbox-body strong {
   font-size: 13.5px;
-  color: var(--dk-text);
+  color: var(--px-ink);
 }
 .mailbox-body small {
   font-size: 12px;
-  color: var(--dk-sec);
+  color: var(--px-ink-sec);
 }
 .mailbox-body em {
   font-size: 12px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
   font-style: normal;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2904,7 +2889,7 @@ body.workbench {
 }
 .mailbox-meta time {
   font-size: 11px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
 }
 
 .mailbox-dot {
@@ -2921,7 +2906,7 @@ body.workbench {
 }
 .mailbox-compose-card p {
   font-size: 13px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
   margin-bottom: 12px;
 }
 
@@ -2942,7 +2927,7 @@ body.workbench {
 }
 .mailbox-compose-form label {
   font-size: 13.5px;
-  color: var(--dk-sec);
+  color: var(--px-ink-sec);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -3022,11 +3007,11 @@ body.workbench {
 }
 .mailbox-attach-card strong {
   font-size: 13px;
-  color: var(--dk-text);
+  color: var(--px-ink);
 }
 .mailbox-attach-card small {
   font-size: 12px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
 }
 
 /* ═════════════════════════════════════════════════════════
@@ -3058,7 +3043,7 @@ body.workbench {
   gap: 8px;
 }
 .community-card:hover {
-  border-color: var(--dk-sec);
+  border-color: var(--px-ink-sec);
   box-shadow: 0 2px 10px rgba(0,0,0,.06);
   transform: translateY(-1px);
 }
@@ -3066,12 +3051,12 @@ body.workbench {
 .community-text {
   font-size: 13px;
   line-height: 1.55;
-  color: var(--dk-text);
+  color: var(--px-ink);
 }
 
 .community-meta {
   font-size: 11px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
   display: flex;
   flex-wrap: wrap;
   gap: 2px 6px;
@@ -3097,7 +3082,7 @@ body.workbench {
 
 .discover-desc {
   font-size: 13px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
   padding: 0 28px 16px;
   margin-top: -4px;
 }
@@ -3145,7 +3130,7 @@ body.workbench {
   transition: border-color .15s;
 }
 .disc-card:hover {
-  border-color: var(--dk-sec);
+  border-color: var(--px-ink-sec);
 }
 
 .disc-card-img {
@@ -3216,16 +3201,16 @@ body.workbench {
 }
 .disc-card-by strong {
   font-size: 12.5px;
-  color: var(--dk-text);
+  color: var(--px-ink);
 }
 .disc-card-by small {
   font-size: 11px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
 }
 
 .disc-text {
   font-size: 13px;
-  color: var(--dk-text);
+  color: var(--px-ink);
   line-height: 1.55;
   margin: 0 0 10px;
 }
@@ -3308,17 +3293,17 @@ body.workbench {
 }
 .liked-card-header strong {
   font-size: 12.5px;
-  color: var(--dk-text);
+  color: var(--px-ink);
 }
 .liked-card-header small {
   font-size: 11px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
   display: block;
 }
 
 .liked-text {
   font-size: 13px;
-  color: var(--dk-text);
+  color: var(--px-ink);
   line-height: 1.5;
   margin: 0;
 }
@@ -3335,15 +3320,15 @@ body.workbench {
   gap: 2px;
 }
 .liked-postcard:hover {
-  border-color: var(--dk-sec);
+  border-color: var(--px-ink-sec);
 }
 .liked-postcard strong {
   font-size: 12.5px;
-  color: var(--dk-text);
+  color: var(--px-ink);
 }
 .liked-postcard small {
   font-size: 11px;
-  color: var(--dk-muted);
+  color: var(--px-ink-muted);
 }
 
 @media (max-width: 700px) {

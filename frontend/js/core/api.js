@@ -2,10 +2,7 @@
 
 // The backend serves the app on 8787. Keep same-origin requests there, while
 // allowing the separate static frontend server used during local UI work.
-const API_BASE = (
-  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
-  (!window.location.port || window.location.port === '8787')
-) ? '' : 'http://127.0.0.1:8787';
+const API_BASE = window.__API_BASE__ || '';
 
 const api = {
   async _fetch(path, options = {}) {
@@ -98,6 +95,10 @@ const api = {
 
   async getPostcards() {
     return this._fetchAuth('/api/postcards');
+  },
+
+  async deletePostcard(postcardId) {
+    return this._fetchAuth(`/api/postcards/${postcardId}`, { method: 'DELETE' });
   },
 
   // ── 社区信件 ──

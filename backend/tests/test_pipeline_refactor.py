@@ -57,10 +57,6 @@ class MockSearch:
             ]
         return ["https://pics.example.com/generic_07.jpg"]
 
-    async def search_text(self, query, num=3):
-        return [{"content": f"关于{query}的描述内容，一段温暖的搜索结果文字"}]
-
-
 @pytest.fixture
 def analysis():
     from services.letter_analysis_service import LetterAnalysisService
@@ -198,7 +194,7 @@ def test_selection_small_input_is_unchanged():
     print("  PASS 4: 少量图片保持原顺序")
 
 
-# ── 测试 5：PoemService 接口兼容性 ──
+# ── 测试 5：PoemService 接口契约 ──
 def test_poem_service():
     print()
     print("=" * 50)
@@ -209,55 +205,11 @@ def test_poem_service():
 
     ps = PoemService(None)
 
-    # 验证所有方法都接受 analysis 参数
-    for method_name in ["generate_poem", "generate_title", "generate_body", "generate_image_prompt"]:
+    for method_name in ["generate_poem", "generate_title", "generate_body"]:
         method = getattr(ps, method_name)
         sig = inspect.signature(method)
         assert "analysis" in sig.parameters, f"{method_name} 缺少 analysis 参数"
         print(f"  PASS 5: {method_name} 含 analysis 参数")
-
-
-# ── 测试 6：降级方案 ──
-def test_fallback():
-    print()
-    print("=" * 50)
-    print("测试 6：降级方案")
-    print("=" * 50)
-
-    from services.letter_analysis_service import LetterAnalysisService
-
-    service = LetterAnalysisService(None)
-
-    # 6.1 空输入
-    empty = service._empty_result()
-    assert empty["core_place"] == ""
-    assert empty["image_prompt"], "空结果应有默认 image_prompt"
-    print("  PASS 6.1: 空输入有默认值")
-
-    # 6.2 fallback
-    fb = service._fallback("...", "华中科技大学", "怀念")
-    assert fb["core_place"] == "华中科技大学"
-    assert "华中科技大学" not in fb["image_prompt"]
-    print("  PASS 6.2: fallback 无地名")
-
-    # 6.3 build_image_prompt
-    bp = service._build_image_prompt({
-        "visual_themes": ["梧桐树", "校园"],
-        "scene_type": "school_gate",
-        "emotional_tone": "怀念",
-    })
-    assert "华中科技大学" not in bp
-    assert "quiet campus" in bp.lower()
-    print("  PASS 6.3: _build_image_prompt 无地名")
-
-    # 6.4 无 visual_themes 时也能生成
-    bp2 = service._build_image_prompt({
-        "visual_themes": [],
-        "scene_type": "other",
-        "emotional_tone": "",
-    })
-    assert "16-bit pixel art" in bp2
-    print("  PASS 6.4: 无视觉主题时也能生成 prompt")
 
 
 # ── 主流程 ──
@@ -273,7 +225,6 @@ if __name__ == "__main__":
     prompt = test_image_prompt(analysis)
     test_selection_small_input_is_unchanged()
     test_poem_service()
-    test_fallback()
 
     print()
     print("=" * 50)

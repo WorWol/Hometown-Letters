@@ -13,13 +13,13 @@ function renderPostcards() {
       <p>所有已经收到的明信片都在这里，像一本不断生长的画册。</p>
     </div>
     <div class="pc-g-hd">
-      <span style="font-size:13.5px;color:var(--dk-muted);">${f.length} 张明信片</span>
+      <span style="font-size:13.5px;color:var(--px-ink-muted);">${f.length} 张明信片</span>
       <input class="inp" id="pc-filter" placeholder="地点 / 标签 / 情绪" value="${App._e(filterText)}" oninput="renderPostcards()">
     </div>
     ${f.length===0?`<div class="g-empty"><p>${filterText?'没有匹配的明信片':'这里暂时是空的。去桌面推进几天吧。'}</p></div>`
       :`<div class="pc-g">${f.map((pc,i)=>`
         <div class="g-card" onclick="App.showPostcardDetail(pcf_${i})">
-          ${pc.imageUrl?`<img src="${App._e(pc.imageUrl)}" alt="" onerror="this.style.display='none'">`:''}
+          ${pc.imageThumbUrl?`<img src="${App._e(pc.imageThumbUrl)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">`:''}
           <div class="info">
             <div class="ti">${App._e(pc.title||'无题')}</div>
             <div class="lo">${App._e(pc.place||'')}${pc.createdAt?' · '+new Date(pc.createdAt).toLocaleDateString('zh-CN'):''}</div>

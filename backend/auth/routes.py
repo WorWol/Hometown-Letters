@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.dependencies import get_current_user
 from auth.security import create_token, hash_password, verify_password
+from config import settings
 from db.database import get_db
-from db.models import User
+from db.models import SystemEvent, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -44,9 +45,16 @@ async def register(body: AuthRequest, db: AsyncSession = Depends(get_db)):
         username=body.username,
         hashed_password=hash_password(body.password),
         current_day=0,
+        postcard_limit=settings.default_postcard_limit,
     )
     db.add(user)
     await db.flush()
+    db.add(SystemEvent(
+        level="info",
+        event_type="user_registered",
+        message="user registered",
+        user_id=user.id,
+    ))
     token = create_token(user.id, user.username)
     return {
         "ok": True,
@@ -79,5 +87,7 @@ async def me(user: User = Depends(get_current_user)):
             "user_id": user.id,
             "username": user.username,
             "current_day": user.current_day,
+            "postcard_limit": user.postcard_limit,
+            "postcard_count": user.postcard_count,
         },
     }

@@ -55,7 +55,7 @@ App.showPostcardDetail = function showPostcardDetail(pc) {
     <div class="modal-pnl postcard-detail-panel">
       <button class="modal-cl floating-close" aria-label="关闭" onclick="this.closest('.modal').remove()">×</button>
       <div class="postcard-detail-visual">
-        <div class="postcard-detail-frame" onclick="event.stopPropagation();enlargePostcardImage(this)">${this._imgHtml(pc)}</div>
+        <div class="postcard-detail-frame" onclick="event.stopPropagation();enlargePostcardImage(this)">${this._imgHtml(pc, { original: true })}</div>
         <div class="postcard-detail-stamp">故乡<br><small>LETTER</small></div>
       </div>
       <div class="postcard-detail-copy">
@@ -275,7 +275,7 @@ function renderWriteLetter() {
 async function _loadCommunityLetters() {
   const el = document.getElementById('community-panel');
   if (!el) return;
-  el.innerHTML = '<div class="panel-heading compact"><div><span class="section-kicker">INSPIRATION</span><h3>来自其他故乡的来信</h3></div></div><div style="padding:0 16px 16px;"><p style="color:var(--dk-muted);font-size:13px;">正在收集灵感……</p></div>';
+  el.innerHTML = '<div class="panel-heading compact"><div><span class="section-kicker">INSPIRATION</span><h3>来自其他故乡的来信</h3></div></div><div style="padding:0 16px 16px;"><p style="color:var(--px-ink-muted);font-size:13px;">正在收集灵感……</p></div>';
   try {
     const r = await api.getCommunityLetters(6);
     if (!r.ok || !r.data || !r.data.letters?.length) { el.innerHTML = ''; return; }
@@ -452,11 +452,11 @@ function renderSettings() {
       </section>
       <section class="drawer-card dark-panel journey-drawer">
         <div class="drawer-handle"></div><span class="section-kicker">JOURNEY STATUS</span><h2>旅程状态</h2>
-        <div class="settings-stats"><div><strong>${state.currentDay || 0}</strong><span>天</span></div><div><strong>${(state.postcards || []).length}</strong><span>明信片</span></div><div><strong>${(state.memories || []).length}</strong><span>记忆</span></div><div><strong>${(state.letters || []).length}</strong><span>信件</span></div></div>
+        <div class="settings-stats"><div><strong>${state.currentDay || 0}</strong><span>天</span></div><div><strong>${state.postcardCount}/${state.postcardLimit}</strong><span>明信片</span></div><div><strong>${(state.memories || []).length}</strong><span>记忆</span></div><div><strong>${(state.letters || []).length}</strong><span>信件</span></div></div>
       </section>
       <section class="drawer-card paper-panel connection-drawer">
         <div class="drawer-handle"></div><span class="section-kicker">CONNECTION</span><h2>信路连接</h2>
-        <label>后端地址<input class="inp" id="s-backend" value="http://127.0.0.1:8787" readonly></label>
+        <label>后端地址<input class="inp" id="s-backend" value="${App._e(window.location.origin)}" readonly></label>
         <div class="setting-actions"><button class="btn btn-sec" onclick="checkBack()">检查连接</button><span class="st" id="s-backend-st" aria-live="polite">&nbsp;</span></div>
       </section>
     </div>`;

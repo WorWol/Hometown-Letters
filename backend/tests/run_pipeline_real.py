@@ -15,14 +15,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.database import init_db, async_session
-from db.models import User, Hometown, Postcard, Letter, Landmark, Base
+from db.database import upgrade_db, async_session
+from db.models import User, Hometown, Postcard, Letter, Landmark
 from auth.security import hash_password
 from services.llm_service import LlmService
 from services.search_service import SearchService
 from services.image_service import ImageService
 from services.selection_service import SelectionService
 from services.poem_service import PoemService
+from services.memory_service import MemoryService
 from services.pipeline_service import LetterPipeline
 from services import image_storage
 
@@ -72,7 +73,7 @@ async def setup_user(db: AsyncSession) -> User:
 
 async def main():
     # 初始化 DB
-    await init_db()
+    await upgrade_db()
 
     # 创建服务
     llm = LlmService()
@@ -80,10 +81,11 @@ async def main():
     image_gen = ImageService()
     selection_svc = SelectionService()  # 不再需要 llm
     poem_svc = PoemService(llm)
+    memory_svc = MemoryService()
 
     pipeline = LetterPipeline(
         llm=llm, search=search, image_gen=image_gen,
-        selection_svc=selection_svc, poem_svc=poem_svc,
+        selection_svc=selection_svc, poem_svc=poem_svc, memory_svc=memory_svc,
     )
 
     async with async_session() as db:
@@ -130,33 +132,33 @@ async def main():
     print(f"  图片提示词:")
     print(f"    {data['imagePrompt'][:120]}...")
     print(f"  搜索图URL:  {len(data['searchImageUrls'])} 张")
-    print(f"  用fallback: {data['usedFallback']}")
 
     # 复制图片到桌面
     pc_id = data["id"]
-    source = image_storage.get_image_path(pc_id)
+    original_key = image_storage.image_variant_keys(user.id, pc_id)["original"]
+    source_url = image_storage.get_image_url(original_key)
     dest = DESKTOP / f"故乡来信_{pc_id}.jpg"
 
     print()
-    if source and source.exists():
-        shutil.copy2(source, dest)
-        print(f"✅ 图片已复制到桌面: {dest.name}")
-        print(f"   大小: {source.stat().st_size / 1024:.1f} KB")
-    else:
-        # 试试下载远程 URL
-        image_url = data.get("imageUrl", "")
-        print(f"   本地文件不存在: {source}")
-        if image_url and image_url.startswith("http"):
-            print(f"   试试下载远程 URL...")
-            img_bytes = await ImageService.download_image_bytes(image_url)
-            if img_bytes:
-                dest.write_bytes(img_bytes)
-                print(f"✅ 从远程下载到桌面: {dest.name}")
-                print(f"   大小: {len(img_bytes) / 1024:.1f} KB")
-            else:
-                print(f"❌ 下载失败")
+    if image_storage.settings.storage_backend.lower() == "local":
+        source_path = image_storage.IMAGES_DIR / original_key
+        if source_path.is_file():
+            shutil.copy2(source_path, dest)
+            print(f"✅ 图片已复制到桌面: {dest.name}")
+            print(f"   大小: {source_path.stat().st_size / 1024:.1f} KB")
+            return
+
+    if source_url.startswith("http"):
+        print("   下载存储图片到桌面...")
+        img_bytes = await ImageService.download_image_bytes(source_url)
+        if img_bytes:
+            dest.write_bytes(img_bytes)
+            print(f"✅ 图片已下载到桌面: {dest.name}")
+            print(f"   大小: {len(img_bytes) / 1024:.1f} KB")
         else:
-            print(f"❌ 无可用图片 URL")
+            print("❌ 图片下载失败")
+    else:
+        print(f"❌ 无可用图片 URL: {source_url}")
 
 
 if __name__ == "__main__":

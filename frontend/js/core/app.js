@@ -38,9 +38,11 @@ const App = {
     this.state = {
       ...this.state,
       ...data,
-      currentDay: data.current_day ?? data.currentDay ?? this.state.currentDay ?? 0,
-      pastSelfProfile: data.past_self_profile ?? data.pastSelfProfile ?? this.state.pastSelfProfile ?? {},
-      likedItems: data.likedItems ?? data.liked_items ?? this.state.likedItems ?? [],
+      currentDay: data.current_day ?? this.state.currentDay ?? 0,
+      postcardLimit: data.postcard_limit ?? this.state.postcardLimit ?? 5,
+      postcardCount: data.postcard_count ?? this.state.postcardCount ?? 0,
+      pastSelfProfile: data.past_self_profile ?? this.state.pastSelfProfile ?? {},
+      likedItems: data.likedItems ?? this.state.likedItems ?? [],
       postcards: Array.isArray(data.postcards) ? data.postcards : (this.state.postcards || []),
       letters: Array.isArray(data.letters) ? data.letters : (this.state.letters || []),
       memories: Array.isArray(data.memories) ? data.memories : (this.state.memories || []),
@@ -84,7 +86,7 @@ const App = {
     o.onclick = e => { if (e.target === o) o.remove(); };
     const poem = pc.poem || '';
     const tags = pc.keywords || pc.tags || [];
-    const imgHtml = this._imgHtml(pc);
+    const imgHtml = this._imgHtml(pc, { original: true });
 
     o.innerHTML = `
       <div class="modal-pnl">
@@ -105,7 +107,7 @@ const App = {
         <div class="modal-bd">${this._e(pc.body||'')}</div>
         ${poem ? `<div class="modal-poem">${this._e(poem)}</div>` : ''}
         <div class="modal-tags">${tags.map(t=>`<span class="tag">${this._e(String(t))}</span>`).join('')}</div>
-        ${pc.letterText?`<div class="modal-poem" style="border-top:none;font-style:normal;font-size:13px;color:var(--dk-muted);">来信：${this._e(pc.letterText.slice(0,80))}${pc.letterText.length>80?'…':''}</div>`:''}
+        ${pc.letterText?`<div class="modal-poem" style="border-top:none;font-style:normal;font-size:13px;color:var(--px-ink-muted);">来信：${this._e(pc.letterText.slice(0,80))}${pc.letterText.length>80?'…':''}</div>`:''}
         <div class="modal-ft">
           <button class="btn btn-sec" onclick="this.closest('.modal').remove()">关闭</button>
         </div>
@@ -135,8 +137,8 @@ const App = {
 
   /* 渲染明信片图片区域（真实图或渐变占位） */
   _imgHtml(pc, opts = {}) {
-    const { small } = opts;
-    const img = pc.imageUrl;
+    const { small, original } = opts;
+    const img = original ? pc.imageOriginalUrl : small ? pc.imageThumbUrl : pc.imageUrl;
     if (img) {
       const g = this._imgGradient(pc.place, pc.mood);
       return `<div style="width:100%;height:100%;background:${g};border-radius:inherit;">

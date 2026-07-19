@@ -92,6 +92,24 @@ Hometown-Letters/
 
 ## 🚀 快速开始
 
+### 线上存储与开发者后台
+
+生产环境使用 `STORAGE_BACKEND=oss`。用户生成图片会保存为三个 WebP object key：
+
+```text
+{OSS_OBJECT_PREFIX}/{user_id}/{postcard_id}/thumb.webp
+{OSS_OBJECT_PREFIX}/{user_id}/{postcard_id}/card.webp
+{OSS_OBJECT_PREFIX}/{user_id}/{postcard_id}/original.webp
+```
+
+数据库只保存 key，后端返回 OSS 短期签名 URL，浏览器直接从 OSS 加载图片。ECS 上传使用 `OSS_UPLOAD_ENDPOINT`，浏览器签名下载使用 `OSS_PUBLIC_ENDPOINT`。未配置 OSS 时使用本地 `/media`，方便开发。
+
+每个新用户默认最多生成 5 张明信片，`DEFAULT_POSTCARD_LIMIT` 可在服务器环境配置中调整。开发者后台地址为 `/admin.html`，通过服务器 `.env` 中的 `ADMIN_TOKEN` 认证，可查看本地 SQLite 的用户、信件、明信片、磁盘和运行事件。
+
+日志不上传 OSS，全部保存在服务器本地：结构化关键事件写入 SQLite 的 `system_events` 表，默认保留 30 天；完整运行日志写入 `backend/logs/hometown.log`，每天轮转，默认保留 7 天。Docker 部署使用 `app-data` 和 `app-logs` 卷持久化数据库与日志，应用启动时清理过期事件，并每 6 小时自动执行一次。后台还可通过认证接口 `/api/admin/logs` 查看当前文本日志末尾内容，最多返回 `ADMIN_LOG_LINES` 行。
+
+生产启动会执行 `alembic upgrade head`。这是新数据结构，不保留旧 `image_path` 兼容字段；没有 Alembic 版本记录的旧数据库不能直接升级，部署前必须备份并按当前结构重建数据库。
+
 ### 前置条件
 
 - Python 3.12+
@@ -162,8 +180,24 @@ python main.py
 | `POST` | `/api/letter/send` | 发送一封信（走 AI 管道生成明信片） |
 | `POST` | `/api/memory/save` | 保存一段记忆（含 LLM 摘要） |
 | `GET` | `/api/postcards` | 获取所有明信片 |
+| `DELETE` | `/api/postcards/{postcard_id}` | 删除自己的明信片及其本地/OSS 图片 |
 | `GET` | `/api/community-letters?limit=5` | 查看其他用户的公开信件（写作灵感） |
-| `GET` | `/api/image/{image_id}` | 获取图片文件 |
+图片接口不单独代理文件；`/api/state`、`/api/postcards` 等接口会返回 `imageThumbUrl`、`imageUrl` 和 `imageOriginalUrl`，前端直接加载对应的本地 `/media/...` 或 OSS 签名 URL。
+
+当前旧数据库和本地图片的一次性迁移：
+
+```bash
+cd backend
+PYTHONPATH=. .venv/bin/python scripts/migrate_existing_data.py
+```
+
+上面只执行检查，不会修改数据库或上传文件。确认 OSS 配置、RAM 权限和本地图片无误后，在服务器上显式执行：
+
+```bash
+STORAGE_BACKEND=oss PYTHONPATH=. .venv/bin/python scripts/migrate_existing_data.py --execute
+```
+
+执行前会备份 SQLite；只有数据库迁移和图片上传全部成功后才替换正式数据库。AccessKey 永远不返回给前端，前端只拿短期签名 URL。用户删除自己的明信片时，后端会先删除对应的 OSS 三个对象，再删除数据库记录。
 
 ### 邮件接口（需要 Bearer Token）
 
@@ -196,20 +230,20 @@ curl -X POST http://localhost:8787/api/mail/send \
 
 ## 🧠 信件处理管道
 
-每封发往 AI 的信件经过 9 个阶段：
+每封发往 AI 的信件经过 7 个阶段：
 
 ```
 用户写信
   → 1. 信件分析（LLM 提取地点、情绪、视觉主题）
-  → 2. 图片搜索（Serper 搜索故乡参考图片）
+  → 2. 图片搜索（使用分析结果的第一条关键词）
   → 3. 图片筛选（去重 + Top 5）
-  → 4. 文字搜索（Serper 地点描述）
-  → 5. 诗歌生成（LLM 生成诗 + 标题 + 正文）
-  → 6. 图像提示词构建
-  → 7. 像素画生成（火山引擎 16-bit 风格）
-  → 8. 图片存储（本地 / OSS）
-  → 9. 数据库持久化 + 记忆系统更新
+  → 4. 诗歌生成（LLM 生成诗 + 标题 + 正文）
+  → 5. 像素画生成（火山引擎 16-bit 风格）
+  → 6. 图片存储（本地 / OSS）
+  → 7. 数据库持久化 + 记忆系统更新
 ```
+
+核心生成链路不自动切换模型、不自动重试、不吞掉外部错误，也不使用搜索图片冒充生成结果；任一步失败都会回滚本次信件和明信片。
 
 ### 记忆系统
 

@@ -1,4 +1,4 @@
-"""写信管道的图片降级持久化回归测试。"""
+"""写信管道失败事务回归测试。"""
 from __future__ import annotations
 
 import json
@@ -26,10 +26,7 @@ class MockLlm:
 
 class MockSearch:
     async def search_images(self, query: str, num: int = 6):
-        return ["https://images.example.com/fallback.jpg"]
-
-    async def search_text(self, query: str, num: int = 3):
-        return []
+        return ["https://images.example.com/reference.jpg"]
 
 
 class MockImageGen:
@@ -64,7 +61,7 @@ class MockMemory:
         return None
 
 
-async def test_external_fallback_url_is_persisted(monkeypatch):
+async def test_generation_failure_does_not_persist_postcard(monkeypatch):
     async def no_download(url: str):
         return None
 
@@ -94,10 +91,8 @@ async def test_external_fallback_url_is_persisted(monkeypatch):
         )
         result = await pipeline.process(db, user, "我想起旧街。", "旧街", "怀念")
 
-        assert result["ok"] is True
-        assert result["data"]["imageUrl"] == "https://images.example.com/fallback.jpg"
-        saved = (await db.execute(select(Postcard))).scalar_one()
-        assert saved.image_path == "https://images.example.com/fallback.jpg"
-        assert saved.used_fallback is True
+        assert result["ok"] is False
+        saved = (await db.execute(select(Postcard))).scalars().all()
+        assert saved == []
 
     await engine.dispose()

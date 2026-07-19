@@ -1,4 +1,7 @@
-# 当前为私有仓库，运行配置随项目版本管理
+# 本地运行配置，禁止提交凭证
+.env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -15,6 +18,8 @@ venv/
 
 # 数据库
 backend/data/*.db
+backend/data/*.db-*
+backend/data/*.bak
 
 # 日志
 backend/logs/*.log

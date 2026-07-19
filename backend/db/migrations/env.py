@@ -1,4 +1,5 @@
 """Alembic 环境配置 — SQLite + SQLAlchemy 2.0"""
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -9,8 +10,9 @@ from db.database import SQLITE_URL
 
 config = context.config
 
-# 用代码里的真实 SQLite URL 覆盖 alembic.ini
-config.set_main_option("sqlalchemy.url", SQLITE_URL.replace("+aiosqlite", ""))
+# 应用启动使用正式数据库；一次性数据迁移可以显式指定临时数据库。
+database_url = os.environ.get("ALEMBIC_DATABASE_URL", SQLITE_URL)
+config.set_main_option("sqlalchemy.url", database_url.replace("+aiosqlite", ""))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

@@ -16,7 +16,7 @@ function renderSettings() {
     ${userInfo ? `
     <div class="set-sec">
       <h3>账户</h3>
-      <div class="set-row"><label>用户名</label><span style="font-size:14px;color:var(--dk-text);">${App._e(userInfo.username)}</span></div>
+      <div class="set-row"><label>用户名</label><span style="font-size:14px;color:var(--px-ink);">${App._e(userInfo.username)}</span></div>
       <button class="btn btn-dng" onclick="doLogout()" style="margin-top:8px;">退出登录</button>
     </div>` : ''}
 
@@ -31,14 +31,14 @@ function renderSettings() {
     </div>
     <div class="set-sec">
       <h3>状态</h3>
-      <div class="set-row"><label>当前天数</label><span style="font-size:14px;color:var(--dk-text);">第 ${s.currentDay||0} 天</span></div>
-      <div class="set-row"><label>明信片</label><span style="font-size:14px;color:var(--dk-text);">${(s.postcards||[]).length} 张</span></div>
-      <div class="set-row"><label>记忆</label><span style="font-size:14px;color:var(--dk-text);">${(s.memories||[]).length} 条</span></div>
-      <div class="set-row"><label>信件</label><span style="font-size:14px;color:var(--dk-text);">${(s.letters||[]).length} 封</span></div>
+      <div class="set-row"><label>当前天数</label><span style="font-size:14px;color:var(--px-ink);">第 ${s.currentDay||0} 天</span></div>
+      <div class="set-row"><label>明信片</label><span style="font-size:14px;color:var(--px-ink);">${s.postcardCount} / ${s.postcardLimit} 张</span></div>
+      <div class="set-row"><label>记忆</label><span style="font-size:14px;color:var(--px-ink);">${(s.memories||[]).length} 条</span></div>
+      <div class="set-row"><label>信件</label><span style="font-size:14px;color:var(--px-ink);">${(s.letters||[]).length} 封</span></div>
     </div>
     <div class="set-sec">
       <h3>后端</h3>
-      <div class="set-row"><label>地址</label><input class="inp" id="s-backend" value="http://127.0.0.1:8787"></div>
+      <div class="set-row"><label>地址</label><input class="inp" id="s-backend" value="${App._e(window.location.origin)}" readonly></div>
       <button class="btn btn-sec" onclick="checkBack()">检查连接</button>
       <div class="st" id="s-backend-st">&nbsp;</div>
     </div>`;

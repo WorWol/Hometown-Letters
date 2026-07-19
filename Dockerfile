@@ -11,11 +11,6 @@ FROM python:3.12-slim
 LABEL org.opencontainers.image.title="故乡来信"
 LABEL org.opencontainers.image.description="Hometown Letters — 像素风书信生成应用"
 
-# ── 系统依赖 ──
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
 # ── 工作目录 ──
 WORKDIR /app
 

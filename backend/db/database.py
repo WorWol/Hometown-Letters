@@ -1,12 +1,13 @@
 """异步数据库引擎 + get_db 依赖注入"""
 from __future__ import annotations
 
-import os
+import asyncio
 from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-from db.models import Base
 
 # 数据库文件路径
 _data_dir = Path(__file__).resolve().parent.parent / "data"
@@ -19,6 +20,15 @@ engine = create_async_engine(
     connect_args={"check_same_thread": False},
 )
 
+
+@event.listens_for(engine.sync_engine, "connect")
+def _configure_sqlite(connection, _record) -> None:
+    cursor = connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.close()
+
 async_session = async_sessionmaker(
     engine,
     class_=AsyncSession,
@@ -26,10 +36,13 @@ async_session = async_sessionmaker(
 )
 
 
-async def init_db() -> None:
-    """创建所有表（开发用；生产用 Alembic）"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+def _upgrade_db_sync() -> None:
+    config = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
+    command.upgrade(config, "head")
+
+
+async def upgrade_db() -> None:
+    await asyncio.to_thread(_upgrade_db_sync)
 
 
 async def get_db():

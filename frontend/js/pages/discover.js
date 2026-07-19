@@ -73,14 +73,14 @@ function _renderDiscoverList(container) {
 
   container.innerHTML = items.map((item, i) => {
     const pc = item.postcard;
-    const hasPc = !!(pc && (pc.imageUrl || pc.body));
+    const hasPc = !!(pc && (pc.imageThumbUrl || pc.body));
     const imgGradient = App._imgGradient(item.place, item.mood);
     return `
       <div class="disc-card">
         ${hasPc ? `
         <button type="button" class="disc-card-img" aria-label="打开明信片详情" onclick="event.stopPropagation();App.showPostcardDetail(window._discPC[${i}])">
-          ${pc.imageUrl
-            ? `<img src="${App._e(pc.imageUrl)}" alt="" loading="lazy" onerror="this.parentElement.style.background='${imgGradient}';this.style.display='none';">`
+          ${pc.imageThumbUrl
+            ? `<img src="${App._e(pc.imageThumbUrl)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.style.background='${imgGradient}';this.style.display='none';">`
             : `<div class="disc-card-gradient" style="background:${imgGradient};"><span>${App._e(pc.place||item.place||'')}</span></div>`}
         </button>` : ''}
         <div class="disc-card-bd">

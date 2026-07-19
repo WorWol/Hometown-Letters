@@ -25,24 +25,22 @@ services:
     env_file:
       - .env
     volumes:
-      # 代码热重载：修改代码自动生效
-      - ./backend:/app/backend
-      - ./frontend:/app/frontend
       # 持久化数据（SQLite 数据库放在 backend/data/）
       - app-data:/app/backend/data
       # 持久化生成的图片
       - app-images:/app/backend/generated_images
+      # 本地文本日志，按天轮转并保留 LOG_RETENTION_DAYS 天
+      - app-logs:/app/backend/logs
+      # 本地存储模式下，生成的 WebP 通过 /media 直接提供
       # 忽略容器内的 __pycache__，避免权限问题
       - /app/backend/__pycache__
     command: >
       uvicorn main:app
       --host 0.0.0.0
       --port 8787
-      --reload
-      --reload-dir /app/backend
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8787/docs"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8787/api/admin/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -51,3 +49,4 @@ services:
 volumes:
   app-data:
   app-images:
+  app-logs:

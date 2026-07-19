@@ -24,7 +24,7 @@ function renderMemories() {
       ${recent.length>0?`<div class="s-tit" style="font-size:13px;margin-top:10px;">慢慢留了下来的</div>
         ${recent.slice(0,4).map(r=>`<div class="pp">· 最近总会想起${App._e(r.name||'')}</div>`).join('')}`:''}
     </div>` : `<div class="card" style="margin-bottom:14px;"><div class="card-ttl">过去的我</div>
-      <p style="color:var(--dk-muted);font-size:13.5px;">写下一些记忆后，它会慢慢在这里浮现。</p></div>`;
+      <p style="color:var(--px-ink-muted);font-size:13.5px;">写下一些记忆后，它会慢慢在这里浮现。</p></div>`;
 
   el.innerHTML = `
     <div class="pg-hd">
@@ -34,10 +34,10 @@ function renderMemories() {
     <div class="mem-lay">
       <div class="mem-main">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <span style="font-size:14px;color:var(--dk-sec);font-weight:500;">${ms.length} 条记忆</span>
+          <span style="font-size:14px;color:var(--px-ink-sec);font-weight:500;">${ms.length} 条记忆</span>
           <button class="btn btn-pri" onclick="showMemForm()">记下一件小事</button>
         </div>
-        ${ms.length===0?`<div class="card" style="text-align:center;padding:36px 20px;"><p style="color:var(--dk-muted);">还没有记下任何事。</p></div>`
+        ${ms.length===0?`<div class="card" style="text-align:center;padding:36px 20px;"><p style="color:var(--px-ink-muted);">还没有记下任何事。</p></div>`
           :`<div>${ms.map((m,i)=>`
             <div class="card mem-item" onclick="showMemDetail(mem__${i})">
               <div class="tx">${App._e(m.text)}</div>
@@ -73,7 +73,7 @@ function showMemDetail(m) {
   o.innerHTML = `<div class="modal-pnl"><div class="modal-hd"><h3>这段记忆</h3><button class="modal-cl" onclick="this.closest('.modal').remove()">x</button></div>
     <div class="modal-meta">${m.timestamp?new Date(m.timestamp).toLocaleString('zh-CN'):''}${m.analysisStatus?' · '+_as(m.analysisStatus):''}</div>
     <div class="modal-bd">${App._e(m.text)}</div>
-    ${m.summary?`<div class="modal-poem" style="font-style:normal;color:var(--dk-sec);">${App._e(m.summary)}</div>`:''}
+    ${m.summary?`<div class="modal-poem" style="font-style:normal;color:var(--px-ink-sec);">${App._e(m.summary)}</div>`:''}
     ${m.tags&&m.tags.length>0?`<div class="modal-tags">${m.tags.map(t=>`<span class="tag">${App._e(t)}</span>`).join('')}</div>`:''}
     <div class="modal-ft"><button class="btn btn-sec" onclick="this.closest('.modal').remove()">关闭</button></div></div>`;
   document.body.appendChild(o);
@@ -85,11 +85,11 @@ function showMemForm() {
   o.onclick=e=>{if(e.target===o)o.remove();};
   o.innerHTML = `<div class="modal-pnl"><div class="modal-hd"><h3>记下一件小事</h3><button class="modal-cl" onclick="this.closest('.modal').remove()">x</button></div>
     <div style="padding:14px 24px 20px;">
-      <div class="fg" style="margin-bottom:12px;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--dk-sec);">什么小事？</label>
+      <div class="fg" style="margin-bottom:12px;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--px-ink-sec);">什么小事？</label>
         <textarea class="inp inp-ta" id="mem-text" rows="4" placeholder="今天想起了什么？某个地方、某种气味、某个瞬间……"></textarea></div>
       <div style="display:flex;gap:12px;">
-        <div class="fg" style="flex:1;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--dk-sec);">标签（逗号分隔）</label><input class="inp" id="mem-tags" placeholder="如：家、学校、夏天"></div>
-        <div class="fg" style="flex:1;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--dk-sec);">地点（可选）</label><input class="inp" id="mem-place" placeholder="如：秀流公园"></div>
+        <div class="fg" style="flex:1;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--px-ink-sec);">标签（逗号分隔）</label><input class="inp" id="mem-tags" placeholder="如：家、学校、夏天"></div>
+        <div class="fg" style="flex:1;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--px-ink-sec);">地点（可选）</label><input class="inp" id="mem-place" placeholder="如：秀流公园"></div>
       </div>
       <button class="btn btn-pri" onclick="saveMem()" id="mem-btn" style="margin-top:14px;">保存这段记忆</button>
       <div class="st" id="mem-status">&nbsp;</div>

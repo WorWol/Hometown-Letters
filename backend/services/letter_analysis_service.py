@@ -86,8 +86,8 @@ class LetterAnalysisService:
         user_context: dict | None = None,
     ) -> dict[str, Any]:
         """深度分析信件，返回结构化结果"""
-        if not letter_text.strip() and not place_hint.strip():
-            return self._empty_result()
+        if not letter_text.strip():
+            raise ValueError("letter text is required")
 
         # 构建用户消息
         msg_parts = []
@@ -116,32 +116,30 @@ class LetterAnalysisService:
 
         user_msg = "\n\n".join(msg_parts)
 
-        try:
-            raw = self.llm.chat(
-                SYSTEM_ANALYSIS,
-                user_msg,
-                temperature=0.4,
-                max_tokens=600,
-            )
-            result = self._parse_json(raw)
+        raw = self.llm.chat(
+            SYSTEM_ANALYSIS,
+            user_msg,
+            temperature=0.4,
+            max_tokens=600,
+        )
+        result = self._parse_json(raw)
+        required = {
+            "visual_themes", "emotional_tone", "scene_type",
+            "search_keywords", "core_place", "image_prompt",
+        }
+        missing = required - result.keys()
+        if missing:
+            raise ValueError(f"letter analysis missing fields: {sorted(missing)}")
+        if not result["core_place"].strip() or not result["image_prompt"].strip():
+            raise ValueError("letter analysis returned empty place or image prompt")
+        if not result["search_keywords"]:
+            raise ValueError("letter analysis returned no search keywords")
 
-            # 补充默认值
-            result.setdefault("visual_themes", [])
-            result.setdefault("emotional_tone", mood_hint or "温暖/怀念")
-            result.setdefault("scene_type", "other")
-            result.setdefault("search_keywords", [])
-            result.setdefault("core_place", place_hint or "")
-            result.setdefault("image_prompt", self._build_image_prompt(result))
-
-            logger.info(
-                "letter analysis: core_place=%s, tone=%s, themes=%s",
-                result["core_place"], result["emotional_tone"], result["visual_themes"],
-            )
-            return result
-
-        except Exception as e:
-            logger.warning("letter analysis failed: %s, using fallback", e)
-            return self._fallback(letter_text, place_hint, mood_hint)
+        logger.info(
+            "letter analysis: core_place=%s, tone=%s, themes=%s",
+            result["core_place"], result["emotional_tone"], result["visual_themes"],
+        )
+        return result
 
     @staticmethod
     def _format_user_context(user_context: dict) -> str:
@@ -157,64 +155,3 @@ class LetterAnalysisService:
             if clean.endswith("```"):
                 clean = clean[:-3]
         return json.loads(clean)
-
-    def _empty_result(self) -> dict[str, Any]:
-        return {
-            "visual_themes": [],
-            "emotional_tone": "温暖/怀念",
-            "scene_type": "other",
-            "search_keywords": [],
-            "core_place": "",
-            "image_prompt": (
-                "16-bit pixel art of a peaceful hometown scene, warm golden light, "
-                "nostalgic atmosphere, quiet streets or paths, soft shadows, "
-                "SNES-era game screenshot aesthetic"
-            ),
-        }
-
-    def _fallback(
-        self, letter_text: str, place_hint: str, mood_hint: str
-    ) -> dict[str, Any]:
-        """LLM 调用失败时的降级方案"""
-        core_place = place_hint or ""
-        search_kws = []
-        if core_place:
-            search_kws = [f"{core_place} 风景", f"{core_place} scenery"]
-        return {
-            "visual_themes": [],
-            "emotional_tone": mood_hint or "温暖/怀念",
-            "scene_type": "other",
-            "search_keywords": search_kws,
-            "core_place": core_place,
-            "image_prompt": (
-                "16-bit pixel art of a warm nostalgic hometown scene, "
-                "soft golden light, peaceful atmosphere, quiet charm, "
-                "SNES-era game screenshot aesthetic"
-            ),
-        }
-
-    def _build_image_prompt(self, analysis: dict) -> str:
-        """当 LLM 没返回 image_prompt 时，用 visual_themes + scene_type 拼接"""
-        themes_cn = "、".join(analysis.get("visual_themes", []))
-        tone = analysis.get("emotional_tone", "")
-        scene_type = analysis.get("scene_type", "other")
-        scene_map = {
-            "school_gate": "a quiet campus scene",
-            "lakeside_dam": "a peaceful waterside scene",
-            "bridge_roadside": "an old bridge with dappled sunlight",
-            "street_food": "a lively street with warm lantern glow",
-            "path_to_pond": "a shaded path leading to water",
-            "park": "a peaceful park under soft morning light",
-            "market": "a colorful market with morning light",
-            "temple": "a quiet temple courtyard with incense",
-            "mountain": "a misty mountain landscape",
-            "city": "a nostalgic city street scene",
-            "other": "a warm hometown scene",
-        }
-        scene = scene_map.get(scene_type, "a warm nostalgic scene")
-        return (
-            f"16-bit pixel art of {scene}, "
-            f"visual elements: {themes_cn}, "
-            f"{tone} atmosphere, warm nostalgic lighting, "
-            "SNES-era game screenshot aesthetic"
-        )

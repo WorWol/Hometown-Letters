@@ -4,16 +4,15 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from auth.dependencies import get_current_user
 from db.database import get_db
-from db.models import Hometown, Letter, LetterLike, Mail, Memory, PastSelfProfile, Postcard, User
+from db.models import Hometown, Letter, LetterLike, Mail, Memory, PastSelfProfile, Postcard, SystemEvent, User
 from services import image_storage
 
 logger = logging.getLogger(__name__)
@@ -90,9 +89,9 @@ async def get_state(
     )
     postcards = []
     for pc in result.scalars().all():
-        image_url = ""
-        if pc.image_path:
-            image_url = image_storage.get_image_url(pc.image_path)
+        image_url = image_storage.get_image_url(pc.image_card_key)
+        image_thumb_url = image_storage.get_image_url(pc.image_thumb_key)
+        image_original_url = image_storage.get_image_url(pc.image_original_key)
         postcards.append({
             "id": str(pc.id),
             "title": pc.title,
@@ -103,12 +102,13 @@ async def get_state(
             "landmarkDescription": pc.landmark_description,
             "mood": pc.mood,
             "imageUrl": image_url,
+            "imageThumbUrl": image_thumb_url,
+            "imageOriginalUrl": image_original_url,
             "imagePrompt": pc.image_prompt,
             "searchImageUrls": pc.search_image_urls,
             "createdAt": pc.created_at.isoformat() if pc.created_at else "",
             "letterText": pc.letter_text,
             "tags": pc.tags,
-            "usedFallback": pc.used_fallback,
         })
 
     # Letters
@@ -166,7 +166,13 @@ async def get_state(
     liked_result = await db.execute(
         select(LetterLike, Letter, Postcard, User)
         .join(Letter, LetterLike.letter_id == Letter.id)
-        .outerjoin(Postcard, Postcard.user_id == Letter.user_id)
+        .outerjoin(
+            Postcard,
+            and_(
+                Postcard.user_id == Letter.user_id,
+                Postcard.letter_text == Letter.text,
+            ),
+        )
         .join(User, Letter.user_id == User.id)
         .where(LetterLike.user_id == user.id)
         .order_by(LetterLike.created_at.desc())
@@ -195,6 +201,8 @@ async def get_state(
         "ok": True,
         "data": {
             "current_day": user.current_day,
+            "postcard_limit": user.postcard_limit,
+            "postcard_count": user.postcard_count,
             "hometown": hometown,
             "profile": {"hometownName": hometown.get("hometownName", "")},
             "letters": letters,
@@ -254,13 +262,56 @@ async def send_letter(
     pipeline=Depends(get_pipeline),
 ):
     """发信核心流程"""
-    return await pipeline.process(
-        db=db,
-        user=user,
-        text=body.text,
-        place_hint=body.place_hint,
-        mood_hint=body.mood_hint,
+    reservation = await db.execute(
+        update(User)
+        .where(User.id == user.id, User.postcard_count < User.postcard_limit)
+        .values(postcard_count=User.postcard_count + 1)
     )
+    if reservation.rowcount != 1:
+        db.add(SystemEvent(
+            level="warning",
+            event_type="postcard_quota_rejected",
+            message="postcard quota exhausted",
+            user_id=user.id,
+            event_metadata={"limit": user.postcard_limit},
+        ))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"每位用户最多生成 {user.postcard_limit} 张明信片",
+        )
+    await db.flush()
+    try:
+        result = await pipeline.process(
+            db=db,
+            user=user,
+            text=body.text,
+            place_hint=body.place_hint,
+            mood_hint=body.mood_hint,
+        )
+        if not result.get("ok"):
+            await db.execute(
+                update(User).where(User.id == user.id).values(postcard_count=User.postcard_count - 1)
+            )
+            db.add(SystemEvent(
+                level="error",
+                event_type="postcard_failed",
+                message=result.get("error", "postcard pipeline failed"),
+                user_id=user.id,
+            ))
+        else:
+            db.add(SystemEvent(
+                level="info",
+                event_type="postcard_created",
+                message="postcard created",
+                user_id=user.id,
+                event_metadata={"postcard_id": result.get("data", {}).get("id")},
+            ))
+        return result
+    except Exception:
+        await db.execute(
+            update(User).where(User.id == user.id).values(postcard_count=User.postcard_count - 1)
+        )
+        raise
 
 
 @router.post("/memory/save")
@@ -282,15 +333,12 @@ async def save_memory(
     db.add(memory)
     await db.flush()
 
-    try:
-        summary = llm.chat(
-            "用一句话概括这段记忆的核心场景和情感。",
-            body.text, temperature=0.5, max_tokens=100,
-        )
-        memory.analysis_status = "completed"
-        memory.summary = summary
-    except Exception:
-        memory.analysis_status = "failed"
+    summary = llm.chat(
+        "用一句话概括这段记忆的核心场景和情感。",
+        body.text, temperature=0.5, max_tokens=100,
+    )
+    memory.analysis_status = "completed"
+    memory.summary = summary
 
     await db.flush()
 
@@ -320,9 +368,9 @@ async def get_postcards(
     )
     postcards = []
     for pc in result.scalars().all():
-        image_url = ""
-        if pc.image_path:
-            image_url = image_storage.get_image_url(pc.image_path)
+        image_url = image_storage.get_image_url(pc.image_card_key)
+        image_thumb_url = image_storage.get_image_url(pc.image_thumb_key)
+        image_original_url = image_storage.get_image_url(pc.image_original_key)
         postcards.append({
             "id": str(pc.id),
             "title": pc.title,
@@ -333,14 +381,60 @@ async def get_postcards(
             "landmarkDescription": pc.landmark_description,
             "mood": pc.mood,
             "imageUrl": image_url,
+            "imageThumbUrl": image_thumb_url,
+            "imageOriginalUrl": image_original_url,
             "imagePrompt": pc.image_prompt,
             "searchImageUrls": pc.search_image_urls,
             "createdAt": pc.created_at.isoformat() if pc.created_at else "",
             "letterText": pc.letter_text,
             "tags": pc.tags,
-            "usedFallback": pc.used_fallback,
         })
     return {"ok": True, "data": postcards}
+
+
+@router.delete("/postcards/{postcard_id}")
+async def delete_postcard(
+    postcard_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除当前用户的明信片，并删除对应的本地或 OSS 图片对象。"""
+    result = await db.execute(
+        select(Postcard).where(Postcard.id == postcard_id, Postcard.user_id == user.id)
+    )
+    postcard = result.scalar_one_or_none()
+    if postcard is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="明信片不存在")
+
+    keys = {
+        "thumb": postcard.image_thumb_key,
+        "card": postcard.image_card_key,
+        "original": postcard.image_original_key,
+    }
+    try:
+        await image_storage.delete_image_variants(keys)
+    except Exception as error:
+        logger.exception("postcard image deletion failed postcard=%s user=%s", postcard_id, user.id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="图片存储删除失败，明信片未删除",
+        ) from error
+
+    await db.execute(
+        update(Mail)
+        .where(Mail.attached_postcard_id == postcard.id)
+        .values(attached_postcard_id=None)
+    )
+    await db.delete(postcard)
+    db.add(SystemEvent(
+        level="info",
+        event_type="postcard_deleted",
+        message="postcard and image objects deleted",
+        user_id=user.id,
+        event_metadata={"postcard_id": postcard_id, "object_keys": [key for key in keys.values() if key]},
+    ))
+    await db.flush()
+    return {"ok": True, "data": {"id": str(postcard_id)}}
 
 
 @router.get("/community-letters")
@@ -400,9 +494,9 @@ async def get_community_letters(
 
 def _build_postcard_dict(pc: Postcard) -> dict:
     """将 Postcard ORM 对象转换为前端使用的字典格式"""
-    image_url = ""
-    if pc.image_path:
-        image_url = image_storage.get_image_url(pc.image_path)
+    image_url = image_storage.get_image_url(pc.image_card_key)
+    image_thumb_url = image_storage.get_image_url(pc.image_thumb_key)
+    image_original_url = image_storage.get_image_url(pc.image_original_key)
     return {
         "id": str(pc.id),
         "title": pc.title,
@@ -413,12 +507,13 @@ def _build_postcard_dict(pc: Postcard) -> dict:
         "landmarkDescription": pc.landmark_description,
         "mood": pc.mood,
         "imageUrl": image_url,
+        "imageThumbUrl": image_thumb_url,
+        "imageOriginalUrl": image_original_url,
         "imagePrompt": pc.image_prompt,
         "searchImageUrls": pc.search_image_urls,
         "createdAt": pc.created_at.isoformat() if pc.created_at else "",
         "letterText": pc.letter_text,
         "tags": pc.tags,
-        "usedFallback": pc.used_fallback,
     }
 
 
@@ -745,7 +840,13 @@ async def get_community_feed(
 
     result = await db.execute(
         select(Letter, Postcard, User)
-        .outerjoin(Postcard, Postcard.user_id == Letter.user_id)
+        .outerjoin(
+            Postcard,
+            and_(
+                Postcard.user_id == Letter.user_id,
+                Postcard.letter_text == Letter.text,
+            ),
+        )
         .join(User, Letter.user_id == User.id)
         .where(Letter.user_id != user.id)
         .order_by(sa_func.random())
@@ -828,13 +929,3 @@ async def unlike_community_letter(
         await db.delete(existing)
         await db.flush()
     return {"ok": True, "data": {"liked": False}}
-
-
-@router.get("/image/{image_id}")
-async def serve_image(image_id: str):
-    """从文件系统提供图片"""
-    data = await image_storage.read_image(image_id)
-    if data:
-        img_bytes, content_type = data
-        return Response(content=img_bytes, media_type=content_type)
-    return Response(content=b"", status_code=404)
