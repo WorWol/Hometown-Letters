@@ -18,6 +18,9 @@ HEALTH_RETRIES="${DEPLOY_HEALTH_RETRIES:-30}"
 HEALTH_INTERVAL="${DEPLOY_HEALTH_INTERVAL:-2}"
 FETCH_RETRIES="${DEPLOY_FETCH_RETRIES:-5}"
 FETCH_INTERVAL="${DEPLOY_FETCH_INTERVAL:-5}"
+GIT_CONNECT_TIMEOUT="${DEPLOY_GIT_CONNECT_TIMEOUT:-15}"
+GIT_LOW_SPEED_LIMIT="${DEPLOY_GIT_LOW_SPEED_LIMIT:-1000}"
+GIT_LOW_SPEED_TIME="${DEPLOY_GIT_LOW_SPEED_TIME:-20}"
 COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-docker-compose.prod.yml}"
 FORCE=false
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/hometown-letters-deploy.lock}"
@@ -97,8 +100,13 @@ if [[ "$FORCE" == true ]]; then
 fi
 
 log "获取远端 main 最新代码……"
-retry "Git 获取远端代码" git -c http.version=HTTP/1.1 fetch --prune origin "$BRANCH" \
-  || retry "Git 获取远端代码（兼容 HTTP/2）" git fetch --prune origin "$BRANCH" \
+GIT_HTTP_OPTIONS=(
+  -c "http.connectTimeout=$GIT_CONNECT_TIMEOUT"
+  -c "http.lowSpeedLimit=$GIT_LOW_SPEED_LIMIT"
+  -c "http.lowSpeedTime=$GIT_LOW_SPEED_TIME"
+)
+retry "Git 获取远端代码" git "${GIT_HTTP_OPTIONS[@]}" -c http.version=HTTP/1.1 fetch --prune origin "$BRANCH" \
+  || retry "Git 获取远端代码（兼容 HTTP/2）" git "${GIT_HTTP_OPTIONS[@]}" -c http.version=HTTP/2 fetch --prune origin "$BRANCH" \
   || die "无法获取 origin/$BRANCH。请检查 ECS 到 GitHub 的网络，或稍后重试。"
 git checkout -B "$BRANCH" "origin/$BRANCH" >/dev/null
 DEPLOY_COMMIT="$(git rev-parse --short HEAD)"
