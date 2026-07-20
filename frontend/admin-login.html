@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>开发者登录 · 故乡来信</title>
+  <link rel="stylesheet" href="admin/login.css?v=white-console-1">
+</head>
+<body>
+<main class="login-shell">
+  <section class="login-aside">
+    <a class="login-brand" href="/"><span class="brand-mark">H</span><span><strong>故乡来信</strong><small>Developer workspace</small></span></a>
+    <div class="aside-copy"><p class="eyebrow">PRIVATE WORKSPACE</p><h1>把复杂的运行状态，<br><em>留在一个安静的地方。</em></h1><p>查看 API、服务器、数据库和 OSS 状态。只有开发者账号可以进入这个工作区。</p></div>
+    <div class="aside-footer"><span class="status-dot"></span>系统访问受保护</div>
+  </section>
+  <section class="login-content">
+    <div class="login-card">
+      <div class="login-heading"><span class="mobile-mark">H</span><p class="eyebrow">DEVELOPER ACCESS</p><h2>进入开发者后台</h2><p>使用已授权的开发者账号继续。</p></div>
+      <form id="developer-login-form" novalidate>
+        <label for="developer-username">用户名</label>
+        <input id="developer-username" name="username" autocomplete="username" placeholder="输入开发者用户名" required>
+        <label for="developer-password">密码</label>
+        <input id="developer-password" name="password" type="password" autocomplete="current-password" placeholder="输入密码" required>
+        <div id="login-error" class="login-error" role="alert"></div>
+        <button class="login-button" type="submit"><span>登录工作区</span><b>→</b></button>
+      </form>
+      <p class="login-note">普通用户账号无法访问开发者后台。</p>
+    </div>
+    <a class="return-product" href="/">← 返回故乡来信</a>
+  </section>
+</main>
+<script src="admin/login.js"></script>
+</body>
+</html>

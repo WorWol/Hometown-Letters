@@ -76,6 +76,11 @@ def image_keys(user_id: int, image_id: str) -> dict[str, str]:
     return {name: f"{prefix}/{user_id}/{image_id}/{name}.webp" for name in ("thumb", "card", "original")}
 
 
+def reference_image_key(user_id: int, image_id: str) -> str:
+    prefix = settings.oss_object_prefix.strip("/") or "postcards"
+    return f"{prefix}/{user_id}/{image_id}/reference.webp"
+
+
 async def save_images(user_id: int, image_id: str, data: bytes) -> dict[str, str]:
     with Image.open(BytesIO(data)) as source:
         variants = {
@@ -109,6 +114,28 @@ async def save_images(user_id: int, image_id: str, data: bytes) -> dict[str, str
         await delete_images({name: key for name, key in keys.items() if key in written})
         raise
     return keys
+
+
+async def save_reference_image(user_id: int, image_id: str, data: bytes) -> str:
+    key = reference_image_key(user_id, image_id)
+    with Image.open(BytesIO(data)) as source:
+        payload = _encode_webp(source, 2048, 90)
+    bucket = _bucket("upload")
+    if bucket:
+        result = await asyncio.to_thread(
+            bucket.put_object,
+            key,
+            payload,
+            headers={"Content-Type": "image/webp", "Cache-Control": "private, max-age=31536000, immutable"},
+        )
+        if not 200 <= result.status < 300:
+            raise RuntimeError(f"reference image upload failed: {key}, HTTP {result.status}")
+    else:
+        path = IMAGES_DIR / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(path, "wb") as output:
+            await output.write(payload)
+    return key
 
 
 async def delete_images(keys: dict[str, str]) -> None:

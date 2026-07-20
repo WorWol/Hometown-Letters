@@ -102,6 +102,7 @@ class Postcard(Base):
     image_thumb_key = Column(String(512), nullable=False, default="")
     image_card_key = Column(String(512), nullable=False, default="")
     image_original_key = Column(String(512), nullable=False, default="")
+    reference_image_key = Column(String(512), nullable=False, default="")
     image_prompt = Column(Text, default="")
     search_image_urls = Column(JSON, default=list)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

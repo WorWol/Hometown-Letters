@@ -25,7 +25,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Letter, Postcard, User
-from storage import delete_images, image_url, save_images
+from storage import delete_images, image_url, save_images, save_reference_image
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +54,12 @@ class LetterPipeline:
         text: str,
         place_hint: str = "",
         mood_hint: str = "",
+        reference_image_data: bytes | None = None,
     ) -> dict:
         """执行完整的写信管道，返回 {ok, data/error}"""
         logger.info("=== pipeline start user=%s day=%s ===", user.id, user.current_day)
         image_keys: dict[str, str] = {}
+        reference_key = ""
         try:
             hometown = await self._load_user_hometown(db, user)
 
@@ -90,18 +92,19 @@ class LetterPipeline:
             # 所有外部步骤成功后，再和明信片一起保存信件。
             effective_mood = mood_hint or analysis["emotional_tone"]
 
-            # ── 图片搜索：只执行分析结果中的第一条关键词 ──
-            logger.info("STEP 2: search images")
-            search_keywords = analysis.get("search_keywords") or [f"{generation_place} 风景 生活场景"]
-            all_image_urls = await self.search.search_images(search_keywords[0], num=5)
-            if not all_image_urls:
-                raise ValueError("image search returned no results")
-
-            # ── 图片筛选 ──
-            logger.info("STEP 3: filter images by letter themes")
-            filtered_urls = self.selection_svc.filter_relevant_images(
-                all_image_urls, analysis
-            )
+            # ── 图片参考：用户上传图优先，否则使用搜索结果 ──
+            if reference_image_data is not None:
+                logger.info("STEP 2: use uploaded reference image")
+                filtered_urls = []
+                reference_data = reference_image_data
+            else:
+                logger.info("STEP 2: search images")
+                search_keywords = analysis.get("search_keywords") or [f"{generation_place} 风景 生活场景"]
+                all_image_urls = await self.search.search_images(search_keywords[0], num=5)
+                if not all_image_urls:
+                    raise ValueError("image search returned no results")
+                logger.info("STEP 3: filter images by letter themes")
+                filtered_urls = self.selection_svc.filter_relevant_images(all_image_urls, analysis)
 
             # ── 生成诗/标题/正文 ──
             logger.info("STEP 4: poem/title/body (letter-informed)")
@@ -117,9 +120,15 @@ class LetterPipeline:
             # ── 生图 ──
             logger.info("STEP 6: generate image")
             from services.image_service import ImageService
-            if not filtered_urls:
-                raise ValueError("image selection returned no results")
-            reference_image = await ImageService.download_and_encode(filtered_urls[0])
+            if reference_image_data is None:
+                if not filtered_urls:
+                    raise ValueError("image selection returned no results")
+                reference_data = await ImageService.download_image_bytes(filtered_urls[0])
+                if not reference_data:
+                    raise RuntimeError("reference image download failed")
+                reference_image = ImageService.encode_reference_image(reference_data, filtered_urls[0])
+            else:
+                reference_image = ImageService.encode_reference_image(reference_data, "uploaded.png")
             gen_result = await self.image_gen.generate(
                 image_prompt, reference_images=[reference_image]
             )
@@ -134,7 +143,10 @@ class LetterPipeline:
 
             # ── 保存图片到文件系统 ──
             image_data = await ImageService.download_image_bytes(gen_result["url"])
+            if not image_data:
+                raise RuntimeError("generated image download failed")
             image_keys = await save_images(user.id, pc_id, image_data)
+            reference_key = await save_reference_image(user.id, pc_id, reference_data)
             local_image_url = image_url(image_keys["card"])
 
             # ── 保存信件和明信片 ──
@@ -163,6 +175,7 @@ class LetterPipeline:
                 image_thumb_key=image_keys.get("thumb", ""),
                 image_card_key=image_keys.get("card", ""),
                 image_original_key=image_keys.get("original", ""),
+                reference_image_key=reference_key,
                 image_prompt=image_prompt,
                 search_image_urls=filtered_urls,
                 created_at=datetime.now(timezone.utc),
@@ -196,6 +209,7 @@ class LetterPipeline:
                     "imageUrl": local_image_url,
                     "imageThumbUrl": image_url(image_keys.get("thumb", "")),
                     "imageOriginalUrl": image_url(image_keys.get("original", "")),
+                    "referenceImageUrl": image_url(reference_key),
                     "imagePrompt": image_prompt,
                     "searchImageUrls": filtered_urls,
                     "createdAt": now_ts,
@@ -207,7 +221,7 @@ class LetterPipeline:
         except Exception as e:
             if image_keys:
                 try:
-                    await delete_images(image_keys)
+                    await delete_images({**image_keys, "reference": reference_key})
                 except Exception:
                     logger.exception("image cleanup failed after pipeline error")
             tb = traceback.format_exc()

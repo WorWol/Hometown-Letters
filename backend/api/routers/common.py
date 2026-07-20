@@ -27,6 +27,7 @@ def postcard_dict(postcard: Postcard) -> dict:
         "imageUrl": storage.image_url(postcard.image_card_key),
         "imageThumbUrl": storage.image_url(postcard.image_thumb_key),
         "imageOriginalUrl": storage.image_url(postcard.image_original_key),
+        "referenceImageUrl": storage.image_url(postcard.reference_image_key),
         "imagePrompt": postcard.image_prompt,
         "searchImageUrls": postcard.search_image_urls,
         "createdAt": postcard.created_at.isoformat() if postcard.created_at else "",

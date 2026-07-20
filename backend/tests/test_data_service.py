@@ -85,3 +85,4 @@ async def test_delete_postcard_records_storage_retry_and_removes_database_row(da
     assert task.status == "pending"
     assert task.entity_type == "postcard"
     assert task.last_error == "oss unavailable"
+    assert task.object_keys["reference"] == ""

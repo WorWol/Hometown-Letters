@@ -10,7 +10,12 @@ from db.models import Hometown, Letter, LetterLike, LetterMemory, LetterSummary,
 
 
 def postcard_keys(row: Postcard) -> dict[str, str]:
-    return {"thumb": row.image_thumb_key, "card": row.image_card_key, "original": row.image_original_key}
+    return {
+        "thumb": row.image_thumb_key,
+        "card": row.image_card_key,
+        "original": row.image_original_key,
+        "reference": row.reference_image_key,
+    }
 
 
 async def recalculate_postcard_count(db: AsyncSession, user_id: int) -> int:

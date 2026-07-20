@@ -3,38 +3,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>故乡来信 · 开发者后台</title>
-  <link rel="stylesheet" href="admin/admin.css">
+  <title>开发者工作台 · 故乡来信</title>
+  <link rel="stylesheet" href="admin/admin.css?v=white-console-1">
 </head>
 <body>
-<div class="shell">
-  <aside>
-    <div class="brand"><small>Developer Console</small><strong>故乡来信</strong></div>
-    <nav>
-      <button class="active" data-view="overview">概览</button>
-      <button data-view="metrics">API 监控</button>
-      <button data-view="runtime">服务器资源</button>
-      <button data-view="postcards">明信片管理</button>
-      <button data-view="database">数据库</button>
-      <button data-view="storage">OSS 检查</button>
-      <button data-view="events">事件与日志</button>
+<div class="console-shell">
+  <aside class="sidebar">
+    <a class="workspace-mark" href="/" aria-label="返回故乡来信">
+      <span class="mark-glyph">H</span>
+      <span><strong>故乡来信</strong><small>Developer workspace</small></span>
+    </a>
+    <div class="sidebar-label">工作区</div>
+    <nav class="side-nav" aria-label="开发者后台导航">
+      <button class="active" data-view="overview"><span class="nav-icon">⌂</span>概览</button>
+      <button data-view="metrics"><span class="nav-icon">⌁</span>API 监控</button>
+      <button data-view="runtime"><span class="nav-icon">◫</span>服务器资源</button>
+      <button data-view="postcards"><span class="nav-icon">▧</span>明信片管理</button>
+      <button data-view="database"><span class="nav-icon">◉</span>数据库</button>
+      <button data-view="storage"><span class="nav-icon">◌</span>OSS 检查</button>
+      <button data-view="events"><span class="nav-icon">≡</span>事件与日志</button>
     </nav>
-    <p class="side-note">仅限开发者账号访问。普通用户登录不会获得后台权限。</p>
-  </aside>
-  <main>
-    <div class="topbar">
-      <div><h1 id="page-title">系统概览</h1><p class="subtitle">运行状态、API 和数据存储的一处查看</p></div>
-      <form class="connect" id="auth-form"><input id="developer-username" placeholder="开发者用户名" autocomplete="username" required><input id="developer-password" type="password" placeholder="开发者密码" autocomplete="current-password" required><button class="primary">开发者登录</button><button type="button" class="secondary" data-action="developer-logout">退出</button></form>
+    <div class="sidebar-bottom">
+      <div class="environment"><span class="status-dot"></span><span><strong>生产环境</strong><small>服务运行正常</small></span></div>
+      <a href="/" class="back-link">↗ 返回产品</a>
     </div>
-    <div id="status" class="muted">请输入开发者账号登录。</div>
+  </aside>
 
-    <section class="view active" id="view-overview"><div class="metrics" id="overview-metrics"></div><div class="grid2"><div class="panel"><div class="panel-head"><h2>资源概览</h2><button class="secondary" data-action="refresh-overview">刷新</button></div><div id="overview-runtime" class="resource"></div></div><div class="panel"><div class="panel-head"><h2>最近事件</h2><button class="secondary" data-view-target="events">查看全部</button></div><div id="overview-events"></div></div></div></section>
-    <section class="view" id="view-metrics"><div class="panel"><div class="panel-head"><h2>API 调用量</h2><button class="secondary" data-action="refresh-metrics">刷新</button></div><p class="muted" id="metrics-summary"></p><div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th><th>调用量</th><th>成功</th><th>4xx</th><th>5xx</th><th>平均耗时</th><th>最大耗时</th></tr></thead><tbody id="metrics-table"></tbody></table></div></div></section>
-    <section class="view" id="view-runtime"><div class="panel"><div class="panel-head"><h2>服务器资源</h2><button class="secondary" data-action="refresh-runtime">刷新</button></div><p class="muted">Ubuntu 主机、Docker cgroup 和 Python 进程实时采样。</p><div id="runtime-detail" class="resource space-top"></div></div></section>
-    <section class="view" id="view-postcards"><div class="panel"><div class="panel-head"><h2>明信片管理</h2><div class="filters"><input id="pc-query" placeholder="搜索标题、地点或正文"><button class="primary" data-action="search-postcards">搜索</button></div></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>用户</th><th>标题</th><th>地点</th><th>创建时间</th><th>OSS 图片</th><th>操作</th></tr></thead><tbody id="postcards-table"></tbody></table></div></div></section>
-    <section class="view" id="view-database"><div class="panel"><div class="panel-head"><h2>数据库</h2><div class="db-toolbar"><select id="db-table"></select><input id="db-query" placeholder="搜索当前表"><button class="primary" data-action="load-database">查询</button><button class="secondary" data-action="create-row">新增</button></div></div><p class="muted" id="db-summary">选择一张表查看数据。敏感字段和系统事件只读。</p><div class="table-wrap"><table><thead id="database-head"></thead><tbody id="database-table"></tbody></table></div><div class="pagination"><span class="muted" id="db-page"></span><div><button class="secondary" id="db-prev">上一页</button><button class="secondary" id="db-next">下一页</button></div></div></div></section>
-    <section class="view" id="view-storage"><div class="panel"><div class="panel-head"><h2>数据库 / OSS 一致性</h2><button class="primary" data-action="load-storage">开始检查</button></div><p class="muted">检查每条明信片的 thumb、card、original 三个对象。</p><div class="table-wrap"><table><thead><tr><th>明信片 ID</th><th>thumb</th><th>card</th><th>original</th><th>结果</th></tr></thead><tbody id="storage-table"></tbody></table></div></div><div class="panel"><div class="panel-head"><h2>OSS 删除任务</h2><div><button class="secondary" data-action="retry-storage-tasks">立即重试</button> <button class="secondary" data-action="load-storage-tasks">刷新</button></div></div><p class="muted">OSS 暂时不可用时，数据库会保留待重试任务；服务每 60 秒自动重试。</p><div class="table-wrap"><table><thead><tr><th>ID</th><th>对象</th><th>状态</th><th>尝试次数</th><th>错误</th><th>更新时间</th></tr></thead><tbody id="storage-tasks-table"></tbody></table></div></div></section>
-    <section class="view" id="view-events"><div class="panel"><div class="panel-head"><h2>系统事件</h2><button class="secondary" data-action="load-events">刷新</button></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>级别</th><th>类型</th><th>消息</th><th>用户</th></tr></thead><tbody id="events-table"></tbody></table></div></div><div class="panel"><div class="panel-head"><h2>应用日志</h2><button class="secondary" data-action="load-logs">刷新</button></div><pre id="logs">尚未连接</pre></div></section>
+  <main class="console-main">
+    <header class="topbar">
+      <div>
+        <div class="breadcrumb">Developer workspace <span>/</span> <strong id="breadcrumb-current">概览</strong></div>
+        <h1 id="page-title">概览</h1>
+        <p class="subtitle">掌握服务状态、数据和存储的一处工作台。</p>
+      </div>
+      <div class="account-menu">
+        <div class="account-avatar" id="account-avatar">D</div>
+        <div class="account-copy"><strong id="account-name">Developer</strong><span>开发者账号</span></div>
+        <button class="icon-button" type="button" aria-label="退出开发者后台" data-action="developer-logout">↪</button>
+      </div>
+    </header>
+    <div id="status" class="status-line" role="status"></div>
+
+    <section class="view active" id="view-overview"><div class="metrics" id="overview-metrics"></div><div class="grid2"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">SYSTEM</span><h2>资源概览</h2></div><button class="secondary" data-action="refresh-overview">刷新</button></div><div id="overview-runtime" class="resource"></div></div><div class="panel"><div class="panel-head"><div><span class="panel-kicker">ACTIVITY</span><h2>最近事件</h2></div><button class="secondary" data-view-target="events">查看全部</button></div><div id="overview-events"></div></div></div></section>
+    <section class="view" id="view-metrics"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">OBSERVABILITY</span><h2>API 调用量</h2></div><button class="secondary" data-action="refresh-metrics">刷新</button></div><p class="muted" id="metrics-summary"></p><div class="table-wrap"><table><thead><tr><th>方法</th><th>路径</th><th>调用量</th><th>成功</th><th>4xx</th><th>5xx</th><th>平均耗时</th><th>最大耗时</th></tr></thead><tbody id="metrics-table"></tbody></table></div></div></section>
+    <section class="view" id="view-runtime"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">INFRASTRUCTURE</span><h2>服务器资源</h2></div><button class="secondary" data-action="refresh-runtime">刷新</button></div><p class="muted">Ubuntu 主机、Docker cgroup 和 Python 进程实时采样。</p><div id="runtime-detail" class="resource space-top"></div></div></section>
+    <section class="view" id="view-postcards"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">CONTENT</span><h2>明信片管理</h2></div><div class="filters"><input id="pc-query" placeholder="搜索标题、地点或正文"><button class="primary" data-action="search-postcards">搜索</button></div></div><div class="table-wrap"><table><thead><tr><th>ID</th><th>用户</th><th>标题</th><th>地点</th><th>创建时间</th><th>OSS 图片</th><th>操作</th></tr></thead><tbody id="postcards-table"></tbody></table></div></div></section>
+    <section class="view" id="view-database"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">DATA</span><h2>数据库</h2></div><div class="db-toolbar"><select id="db-table"></select><input id="db-query" placeholder="搜索当前表"><button class="primary" data-action="load-database">查询</button><button class="secondary" data-action="create-row">新增</button></div></div><p class="muted" id="db-summary">选择一张表查看数据。敏感字段和系统事件只读。</p><div class="table-wrap"><table><thead id="database-head"></thead><tbody id="database-table"></tbody></table></div><div class="pagination"><span class="muted" id="db-page"></span><div><button class="secondary" id="db-prev">上一页</button><button class="secondary" id="db-next">下一页</button></div></div></div></section>
+    <section class="view" id="view-storage"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">STORAGE</span><h2>数据库 / OSS 一致性</h2></div><button class="primary" data-action="load-storage">开始检查</button></div><p class="muted">检查每条明信片的参考图和三个生成图片对象。</p><div class="table-wrap"><table><thead><tr><th>明信片 ID</th><th>参考图</th><th>thumb</th><th>card</th><th>original</th><th>结果</th></tr></thead><tbody id="storage-table"></tbody></table></div></div><div class="panel"><div class="panel-head"><div><span class="panel-kicker">QUEUE</span><h2>OSS 删除任务</h2></div><div><button class="secondary" data-action="retry-storage-tasks">立即重试</button> <button class="secondary" data-action="load-storage-tasks">刷新</button></div></div><p class="muted">OSS 暂时不可用时，数据库会保留待重试任务。</p><div class="table-wrap"><table><thead><tr><th>ID</th><th>对象</th><th>状态</th><th>尝试次数</th><th>错误</th><th>更新时间</th></tr></thead><tbody id="storage-tasks-table"></tbody></table></div></div></section>
+    <section class="view" id="view-events"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">AUDIT LOG</span><h2>系统事件</h2></div><button class="secondary" data-action="load-events">刷新</button></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>级别</th><th>类型</th><th>消息</th><th>用户</th></tr></thead><tbody id="events-table"></tbody></table></div></div><div class="panel"><div class="panel-head"><div><span class="panel-kicker">APPLICATION</span><h2>应用日志</h2></div><button class="secondary" data-action="load-logs">刷新</button></div><pre id="logs">尚未连接</pre></div></section>
   </main>
 </div>
 <div id="modal-root"></div>

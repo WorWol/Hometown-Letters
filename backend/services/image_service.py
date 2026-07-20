@@ -7,8 +7,10 @@
 import base64
 import json
 import logging
+from io import BytesIO
 import httpx
 from typing import Any
+from PIL import Image, UnidentifiedImageError
 
 from config import settings
 
@@ -24,6 +26,28 @@ except ImportError:
 
 class ImageService:
     """封装火山方舟图像生成 API"""
+
+    MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
+    ALLOWED_REFERENCE_FORMATS = {"JPEG", "PNG", "WEBP"}
+
+    @classmethod
+    def validate_reference_image(cls, data: bytes) -> tuple[bool, str]:
+        """校验用户上传的参考图，不信任客户端 MIME 类型。"""
+        if not data:
+            return False, "参考图不能为空"
+        if len(data) > cls.MAX_REFERENCE_IMAGE_BYTES:
+            return False, "参考图不能超过 10 MB"
+        try:
+            with Image.open(BytesIO(data)) as image:
+                image.verify()
+            with Image.open(BytesIO(data)) as image:
+                if image.format not in cls.ALLOWED_REFERENCE_FORMATS:
+                    return False, "参考图仅支持 JPEG、PNG 或 WEBP"
+                if image.width < 64 or image.height < 64:
+                    return False, "参考图尺寸不能小于 64×64 像素"
+        except (UnidentifiedImageError, OSError, ValueError):
+            return False, "参考图不是有效的图片文件"
+        return True, ""
 
     def __init__(self):
         self.client = None
@@ -194,3 +218,10 @@ class ImageService:
                 return f"data:image/{mime};base64,{img_data}"
         except Exception:
             return None
+
+    @staticmethod
+    def encode_reference_image(data: bytes, source_url: str) -> str:
+        """把已下载的参考图字节编码成生图接口需要的 data URL。"""
+        ext = source_url.rsplit(".", 1)[-1].split("?", 1)[0].lower() if "." in source_url else "jpeg"
+        mime = "jpeg" if ext in ("jpg", "jpeg") else "png"
+        return f"data:image/{mime};base64,{base64.b64encode(data).decode()}"

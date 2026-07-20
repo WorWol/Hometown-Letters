@@ -65,15 +65,12 @@ class MockMemory:
 
 
 async def test_image_generation_failure_does_not_persist_partial_data(monkeypatch):
-    async def no_download(url: str):
-        return None
-
-    async def no_encode(url: str):
-        return None
+    async def fake_download(url: str):
+        return _fake_reference_bytes()
 
     from services.image_service import ImageService
-    monkeypatch.setattr(ImageService, "download_image_bytes", no_download)
-    monkeypatch.setattr(ImageService, "download_and_encode", no_encode)
+    monkeypatch.setattr(ImageService, "download_image_bytes", fake_download)
+    monkeypatch.setattr(ImageService, "encode_reference_image", lambda data, url: "data:image/jpeg;base64,ZmFrZQ==")
 
     engine = create_async_engine("sqlite+aiosqlite://")
     async with engine.begin() as conn:
@@ -99,3 +96,8 @@ async def test_image_generation_failure_does_not_persist_partial_data(monkeypatc
         assert await db.scalar(select(func.count()).select_from(Postcard)) == 0
 
     await engine.dispose()
+
+
+def _fake_reference_bytes() -> bytes:
+    """测试只需一个可下载的占位字节，MockImageGen 不会解析它。"""
+    return b"reference"

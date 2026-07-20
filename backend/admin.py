@@ -70,6 +70,7 @@ def _postcard_dict(row: Postcard) -> dict:
             "thumb": row.image_thumb_key,
             "card": row.image_card_key,
             "original": row.image_original_key,
+            "reference": row.reference_image_key,
         },
     }
 
@@ -79,11 +80,12 @@ def _postcard_image_urls(row: Postcard) -> dict[str, str]:
         "thumb": storage.image_url(row.image_thumb_key),
         "card": storage.image_url(row.image_card_key),
         "original": storage.image_url(row.image_original_key),
+        "reference": storage.image_url(row.reference_image_key),
     }
 
 
 async def _oss_key_status(keys: dict[str, str]) -> dict[str, bool | None]:
-    """检查三个变体；OSS 请求放到线程，避免阻塞 FastAPI 事件循环。"""
+    """检查明信片图片对象；OSS 请求放到线程，避免阻塞 FastAPI 事件循环。"""
     return {
         name: bool(key) and await storage.object_exists_async(key)
         for name, key in keys.items()
@@ -270,9 +272,20 @@ async def storage_check(
         rows = (await db.execute(query)).scalars().all()
         items = []
         for row in rows:
-            keys = {"thumb": row.image_thumb_key, "card": row.image_card_key, "original": row.image_original_key}
+            keys = {
+                "thumb": row.image_thumb_key,
+                "card": row.image_card_key,
+                "original": row.image_original_key,
+                "reference": row.reference_image_key,
+            }
             present = await _oss_key_status(keys)
-            items.append({"postcardId": row.id, "keys": keys, "present": present, "complete": all(present.values())})
+            tracked = [name for name, key in keys.items() if key]
+            items.append({
+                "postcardId": row.id,
+                "keys": keys,
+                "present": present,
+                "complete": bool(tracked) and all(present[name] for name in tracked),
+            })
     return {"ok": True, "data": {"items": items, "checked": len(items)}}
 
 
