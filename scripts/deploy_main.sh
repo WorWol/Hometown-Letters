@@ -21,6 +21,8 @@ FETCH_INTERVAL="${DEPLOY_FETCH_INTERVAL:-5}"
 GIT_CONNECT_TIMEOUT="${DEPLOY_GIT_CONNECT_TIMEOUT:-15}"
 GIT_LOW_SPEED_LIMIT="${DEPLOY_GIT_LOW_SPEED_LIMIT:-1000}"
 GIT_LOW_SPEED_TIME="${DEPLOY_GIT_LOW_SPEED_TIME:-20}"
+GIT_MIRROR_BASE="${DEPLOY_GIT_MIRROR_BASE:-https://gh-proxy.com}"
+GIT_MIRROR_ENABLED="${DEPLOY_GIT_MIRROR_ENABLED:-true}"
 COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-docker-compose.prod.yml}"
 FORCE=false
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/hometown-letters-deploy.lock}"
@@ -105,9 +107,34 @@ GIT_HTTP_OPTIONS=(
   -c "http.lowSpeedLimit=$GIT_LOW_SPEED_LIMIT"
   -c "http.lowSpeedTime=$GIT_LOW_SPEED_TIME"
 )
-retry "Git 获取远端代码" git "${GIT_HTTP_OPTIONS[@]}" -c http.version=HTTP/1.1 fetch --prune origin "$BRANCH" \
-  || retry "Git 获取远端代码（兼容 HTTP/2）" git "${GIT_HTTP_OPTIONS[@]}" -c http.version=HTTP/2 fetch --prune origin "$BRANCH" \
-  || die "无法获取 origin/$BRANCH。请检查 ECS 到 GitHub 的网络，或稍后重试。"
+ORIGIN_URL="$(git remote get-url origin 2>/dev/null || true)"
+[[ -n "$ORIGIN_URL" ]] || die "找不到 origin 远端地址。"
+
+fetch_origin() {
+  retry "Git 获取远端代码" git "${GIT_HTTP_OPTIONS[@]}" -c http.version=HTTP/1.1 fetch --prune origin "$BRANCH" \
+    || retry "Git 获取远端代码（兼容 HTTP/2）" git "${GIT_HTTP_OPTIONS[@]}" -c http.version=HTTP/2 fetch --prune origin "$BRANCH"
+}
+
+if ! fetch_origin; then
+  if [[ "$GIT_MIRROR_ENABLED" != true ]]; then
+    die "无法获取 origin/$BRANCH；已禁用 Git 镜像回退。"
+  fi
+  if [[ "$ORIGIN_URL" != https://github.com/* ]]; then
+    die "无法获取 origin/$BRANCH，且当前远端不是 HTTPS GitHub 地址，无法自动构造镜像地址。"
+  fi
+
+  MIRROR_URL="${GIT_MIRROR_BASE%/}/${ORIGIN_URL}"
+  warn "GitHub 直连失败，临时切换镜像获取代码：$MIRROR_URL"
+  # 仅通过 -c 覆盖本次 fetch 的 URL，不写入 .git/config：
+  # push 远端和下一次部署仍然保持原始 GitHub 地址。
+  retry "Git 镜像获取远端代码" git "${GIT_HTTP_OPTIONS[@]}" \
+    -c "remote.origin.url=$MIRROR_URL" -c http.version=HTTP/1.1 \
+    fetch --prune origin "$BRANCH" \
+    || retry "Git 镜像获取远端代码（兼容 HTTP/2）" git "${GIT_HTTP_OPTIONS[@]}" \
+      -c "remote.origin.url=$MIRROR_URL" -c http.version=HTTP/2 \
+      fetch --prune origin "$BRANCH" \
+    || die "GitHub 直连和镜像均无法获取 origin/$BRANCH。请检查 ECS 网络或更换 DEPLOY_GIT_MIRROR_BASE。"
+fi
 git checkout -B "$BRANCH" "origin/$BRANCH" >/dev/null
 DEPLOY_COMMIT="$(git rev-parse --short HEAD)"
 ok "代码版本：$DEPLOY_COMMIT"
