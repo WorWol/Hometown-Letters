@@ -8,6 +8,10 @@
 
 FROM python:3.12-slim
 
+# ECS 默认使用阿里云 PyPI 镜像，避免生产机从境外 PyPI 慢速下载依赖。
+# 可在构建时通过 PIP_INDEX_URL 覆盖。
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
 LABEL org.opencontainers.image.title="故乡来信"
 LABEL org.opencontainers.image.description="Hometown Letters — 像素风书信生成应用"
 
@@ -16,7 +20,11 @@ WORKDIR /app
 
 # ── 安装 Python 依赖 ──
 COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+RUN pip install --no-cache-dir \
+    --index-url "${PIP_INDEX_URL}" \
+    --timeout 60 \
+    --retries 5 \
+    -r /app/backend/requirements.txt
 
 # ── 复制全部代码 ──
 COPY . /app/
