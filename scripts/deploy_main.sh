@@ -16,6 +16,8 @@ BRANCH="${DEPLOY_BRANCH:-main}"
 HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:8787/api/admin/health}"
 HEALTH_RETRIES="${DEPLOY_HEALTH_RETRIES:-30}"
 HEALTH_INTERVAL="${DEPLOY_HEALTH_INTERVAL:-2}"
+FETCH_RETRIES="${DEPLOY_FETCH_RETRIES:-5}"
+FETCH_INTERVAL="${DEPLOY_FETCH_INTERVAL:-5}"
 COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-docker-compose.prod.yml}"
 FORCE=false
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/hometown-letters-deploy.lock}"
@@ -36,6 +38,22 @@ log() { printf '%b\n' "${CYAN}[deploy]${NC} $*"; }
 ok() { printf '%b\n' "${GREEN}[ ok ]${NC} $*"; }
 warn() { printf '%b\n' "${YELLOW}[warn]${NC} $*"; }
 die() { printf '%b\n' "${RED}[fail]${NC} $*" >&2; exit 1; }
+
+retry() {
+  local label="$1"
+  shift
+  local attempt
+  for ((attempt = 1; attempt <= FETCH_RETRIES; attempt++)); do
+    if "$@"; then
+      return 0
+    fi
+    if (( attempt < FETCH_RETRIES )); then
+      warn "$label失败（${attempt}/${FETCH_RETRIES}），${FETCH_INTERVAL} 秒后重试……"
+      sleep "$FETCH_INTERVAL"
+    fi
+  done
+  return 1
+}
 
 usage() { sed -n '1,18p' "$0"; }
 
@@ -79,9 +97,12 @@ if [[ "$FORCE" == true ]]; then
 fi
 
 log "获取远端 main 最新代码……"
-git fetch --prune origin "$BRANCH"
+retry "Git 获取远端代码" git -c http.version=HTTP/1.1 fetch --prune origin "$BRANCH" \
+  || retry "Git 获取远端代码（兼容 HTTP/2）" git fetch --prune origin "$BRANCH" \
+  || die "无法获取 origin/$BRANCH。请检查 ECS 到 GitHub 的网络，或稍后重试。"
 git checkout -B "$BRANCH" "origin/$BRANCH" >/dev/null
-ok "代码版本：$(git rev-parse --short HEAD)"
+DEPLOY_COMMIT="$(git rev-parse --short HEAD)"
+ok "代码版本：$DEPLOY_COMMIT"
 
 log "校验 Compose 配置……"
 docker compose -f "$COMPOSE_FILE" config -q
@@ -96,17 +117,66 @@ ok "数据库迁移完成。"
 
 docker compose -f "$COMPOSE_FILE" up -d --no-build
 
-log "等待健康检查：$HEALTH_URL"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+log "等待后端健康检查：$HEALTH_URL"
 for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
   if curl --fail --silent --show-error --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
-    ok "服务已启动并通过健康检查。"
-    docker compose -f "$COMPOSE_FILE" ps
-    exit 0
+    ok "后端已启动并通过数据库、存储健康检查。"
+    break
+  fi
+  if (( attempt == HEALTH_RETRIES )); then
+    docker compose -f "$COMPOSE_FILE" ps >&2 || true
+    warn "健康检查未通过，输出最近日志："
+    docker compose -f "$COMPOSE_FILE" logs --tail=80 >&2 || true
+    die "部署未通过健康检查。"
   fi
   sleep "$HEALTH_INTERVAL"
 done
 
-docker compose -f "$COMPOSE_FILE" ps >&2 || true
-warn "健康检查未通过，输出最近日志："
-docker compose -f "$COMPOSE_FILE" logs --tail=80 >&2 || true
-die "部署未通过健康检查。"
+check_http() {
+  local name="$1"
+  local url="$2"
+  local output="$TMP_DIR/${name}.body"
+  local status
+  status="$(curl -L -sS -o "$output" -w '%{http_code}' --max-time 10 "$url" || true)"
+  [[ "$status" == "200" ]] || die "$name 检查失败：HTTP $status ($url)"
+  ok "$name：HTTP 200"
+}
+
+check_status() {
+  local name="$1"
+  local expected="$2"
+  local url="$3"
+  local status
+  status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$url" || true)"
+  [[ "$status" == "$expected" ]] || die "$name 检查失败：期望 HTTP $expected，实际 HTTP $status ($url)"
+  ok "$name：HTTP $expected"
+}
+
+BASE_URL="${DEPLOY_BASE_URL:-http://127.0.0.1:8787}"
+check_http "home" "$BASE_URL/"
+check_http "admin-login" "$BASE_URL/admin-login.html"
+check_http "admin" "$BASE_URL/admin.html"
+check_http "openapi" "$BASE_URL/openapi.json"
+check_status "user-auth-route" "401" "$BASE_URL/api/auth/me"
+check_status "user-state-route" "401" "$BASE_URL/api/state"
+
+ADMIN_JS_URL="$(sed -nE 's#.*<script[^>]+src="([^"]*admin/admin\.js[^"]*)".*#\1#p' "$TMP_DIR/admin.body" | head -n 1)"
+LOGIN_JS_URL="$(sed -nE 's#.*<script[^>]+src="([^"]*admin/login\.js[^"]*)".*#\1#p' "$TMP_DIR/admin-login.body" | head -n 1)"
+[[ -n "$ADMIN_JS_URL" ]] || die "admin.html 没有引用 admin.js。"
+[[ -n "$LOGIN_JS_URL" ]] || die "admin-login.html 没有引用 login.js。"
+check_http "admin-js" "$BASE_URL/${ADMIN_JS_URL#/}"
+check_http "login-js" "$BASE_URL/${LOGIN_JS_URL#/}"
+
+USER_API_URL="$(sed -nE 's#.*<script[^>]+src="([^"]*js/core/api\.js[^"]*)".*#\1#p' "$TMP_DIR/home.body" | head -n 1)"
+[[ -n "$USER_API_URL" ]] || die "首页没有引用用户端 api.js。"
+check_http "user-api-js" "$BASE_URL/${USER_API_URL#/}"
+if grep -Eq "(['\"]|:)http://127\.0\.0\.1:8787(['\"]|$)|(['\"]|:)http://localhost:8787(['\"]|$)" "$TMP_DIR/user-api-js.body"; then
+  die "用户端 api.js 仍包含固定本机 API 地址，公网用户会请求自己的电脑。"
+fi
+ok "用户端 API 使用同源地址。"
+
+ok "部署验收完成，代码版本：$DEPLOY_COMMIT"
+docker compose -f "$COMPOSE_FILE" ps

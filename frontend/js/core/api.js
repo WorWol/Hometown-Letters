@@ -1,11 +1,17 @@
 /* ===== API 客户端 ===== */
 
-// The backend serves the app on 8787. Keep same-origin requests there, while
-// allowing the separate static frontend server used during local UI work.
-const API_BASE = (
+// Production is served by the same FastAPI process as the frontend. Keep API
+// calls same-origin so a public browser never tries to call its own 127.0.0.1.
+// The only cross-origin case is the separate local static server used during
+// frontend work (for example localhost:5500 -> localhost:8787).
+const isLocalFrontendServer = (
   (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
-  (!window.location.port || window.location.port === '8787')
-) ? '' : 'http://127.0.0.1:8787';
+  window.location.port !== '' &&
+  window.location.port !== '8787'
+);
+const API_BASE = isLocalFrontendServer
+  ? `${window.location.protocol}//${window.location.hostname}:8787`
+  : '';
 
 const api = {
   async _fetch(path, options = {}) {

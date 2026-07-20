@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pytest
+import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -9,6 +10,7 @@ from admin import health
 from admin_data import _payload
 from auth.developer import get_current_developer, require_current_developer
 from auth.security import create_token
+from app.factory import create_app
 from db.models import Base, User
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -74,3 +76,32 @@ def test_postcard_limit_is_editable_but_developer_role_is_not():
     assert values == {"postcard_limit": 20}
     with pytest.raises(HTTPException):
         _payload("users", {"is_developer": True}, creating=False)
+
+
+@pytest.mark.asyncio
+async def test_frontend_entrypoints_do_not_keep_stale_code_cached():
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        html = await client.get("/admin.html")
+        javascript = await client.get("/admin/admin.js?v=test")
+
+    assert html.status_code == 200
+    assert html.headers["cache-control"] == "no-store"
+    assert javascript.status_code == 200
+    assert javascript.headers["cache-control"] == "public, max-age=0, must-revalidate"
+
+
+@pytest.mark.asyncio
+async def test_user_frontend_uses_same_origin_api_in_production():
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        page = await client.get("/")
+        api_script = await client.get("/js/core/api.js?v=test")
+
+    assert page.status_code == 200
+    assert "js/core/api.js" in page.text
+    assert api_script.status_code == 200
+    assert "http://127.0.0.1:8787" not in api_script.text
+    assert "const API_BASE = isLocalFrontendServer" in api_script.text

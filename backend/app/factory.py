@@ -17,7 +17,18 @@ from middleware import ApiMetricsMiddleware
 class StaticCacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
-        if request.url.path.lower().endswith((".css", ".js", ".webp", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff2")):
+        path = request.url.path.lower()
+        content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+
+        # HTML 是资源入口，必须每次向服务端确认，才能拿到新版本的 JS/CSS。
+        # 否则浏览器可能缓存旧 HTML，继续引用已经不存在或已改名的脚本。
+        if content_type == "text/html" or path == "/" or path.endswith(".html"):
+            response.headers["Cache-Control"] = "no-store"
+        elif path.endswith((".css", ".js")):
+            # JS/CSS 使用 ETag/Last-Modified 做快速协商缓存，但不允许永久缓存。
+            # 这样部署后即使资源 URL 没变，浏览器也会自动确认内容是否更新。
+            response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
+        elif path.endswith((".webp", ".png", ".jpg", ".jpeg", ".svg", ".ico", ".woff2")):
             response.headers["Cache-Control"] = "public, max-age=86400, immutable"
         return response
 
