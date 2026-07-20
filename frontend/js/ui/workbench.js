@@ -72,6 +72,7 @@ App.showPostcardDetail = function showPostcardDetail(rawPostcard) {
         <span class="section-kicker">POSTCARD · ${this._e(pc.place || '远方')}</span>
         <h3>${this._e(pc.title || '无题明信片')}</h3>
         <div class="modal-meta">${this._e(pc.place || '')}${pc.place && pc.mood ? ' · ' : ''}${this._e(pc.mood || '')}${pc.createdAt ? ` · ${new Date(pc.createdAt).toLocaleDateString('zh-CN')}` : ''}</div>
+        ${pc.generationPlace ? `<div class="modal-source-place">画面取景：${this._e(pc.generationPlace)}</div>` : ''}
         <div class="modal-bd">${this._e(pc.body || '这张明信片没有写下太多，却把那一刻好好留住了。')}</div>
         ${pc.poem ? `<div class="modal-poem">${this._e(pc.poem)}</div>` : ''}
         <div class="modal-tags">${tags.map(tag => `<span class="tag">${this._e(String(tag))}</span>`).join('')}</div>

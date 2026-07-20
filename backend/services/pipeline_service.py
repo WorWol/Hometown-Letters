@@ -13,7 +13,7 @@
       ↓
   阶段 5：生图 + 诗/标题/正文（4 次 LLM，输入增强）
 
-core_place 直接作为明信片的 place，不再经过地标库。
+  core_place 作为信件地点，generation_place 记录实际用于搜图的地点。
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Letter, Postcard, User
-from services.image_storage import delete_image_variants, get_image_url, save_image_variants
+from storage import delete_images, image_url, save_images
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class LetterPipeline:
                 letter_text=text,
                 place_hint=place_hint,
                 mood_hint=mood_hint,
-                hometown=hometown if hometown.get("city") else None,
+                hometown=hometown if any(hometown.values()) else None,
                 user_context=user_context,
             )
             logger.info(
@@ -83,15 +83,16 @@ class LetterPipeline:
                 analysis["visual_themes"],
             )
 
-            # 直接用 core_place 或 place_hint 作为地点
+            # 地点由分析服务按“明确地点优先，否则使用家乡”规则决定。
             core_place = analysis["core_place"]
+            generation_place = analysis.get("generation_place") or core_place
 
             # 所有外部步骤成功后，再和明信片一起保存信件。
             effective_mood = mood_hint or analysis["emotional_tone"]
 
             # ── 图片搜索：只执行分析结果中的第一条关键词 ──
             logger.info("STEP 2: search images")
-            search_keywords = analysis["search_keywords"]
+            search_keywords = analysis.get("search_keywords") or [f"{generation_place} 风景 生活场景"]
             all_image_urls = await self.search.search_images(search_keywords[0], num=5)
             if not all_image_urls:
                 raise ValueError("image search returned no results")
@@ -104,10 +105,10 @@ class LetterPipeline:
 
             # ── 生成诗/标题/正文 ──
             logger.info("STEP 4: poem/title/body (letter-informed)")
-            simple_landmark = {"name": core_place, "description": ""}
-            poem = self.poem_svc.generate_poem(simple_landmark, "", analysis)
-            title = self.poem_svc.generate_title(simple_landmark, poem, analysis, user_context)
-            body_text = self.poem_svc.generate_body(simple_landmark, poem, text, analysis, user_context)
+            place_context = {"name": core_place, "description": ""}
+            poem = self.poem_svc.generate_poem(place_context, "", analysis)
+            title = self.poem_svc.generate_title(place_context, poem, analysis, user_context)
+            body_text = self.poem_svc.generate_body(place_context, poem, text, analysis, user_context)
 
             # ── 图像提示词 ──
             logger.info("STEP 5: image prompt (from analysis)")
@@ -122,6 +123,8 @@ class LetterPipeline:
             gen_result = await self.image_gen.generate(
                 image_prompt, reference_images=[reference_image]
             )
+            if not gen_result.get("ok") or not gen_result.get("url"):
+                raise RuntimeError(gen_result.get("error") or "image generation returned no image")
 
             # ── 生成 ID ──
             pc_id = (
@@ -131,8 +134,8 @@ class LetterPipeline:
 
             # ── 保存图片到文件系统 ──
             image_data = await ImageService.download_image_bytes(gen_result["url"])
-            image_keys = await save_image_variants(user.id, pc_id, image_data)
-            local_image_url = get_image_url(image_keys["card"])
+            image_keys = await save_images(user.id, pc_id, image_data)
+            local_image_url = image_url(image_keys["card"])
 
             # ── 保存信件和明信片 ──
             logger.info("STEP 7: save letter and postcard")
@@ -155,8 +158,7 @@ class LetterPipeline:
                 body=body_text,
                 poem=poem,
                 place=core_place,
-                landmark_id=None,
-                landmark_description="",
+                generation_place=generation_place,
                 mood=effective_mood,
                 image_thumb_key=image_keys.get("thumb", ""),
                 image_card_key=image_keys.get("card", ""),
@@ -189,12 +191,11 @@ class LetterPipeline:
                     "body": body_text,
                     "poem": poem,
                     "place": core_place,
-                    "landmarkId": None,
-                    "landmarkDescription": "",
+                    "generationPlace": generation_place,
                     "mood": effective_mood,
                     "imageUrl": local_image_url,
-                    "imageThumbUrl": get_image_url(image_keys.get("thumb", "")),
-                    "imageOriginalUrl": get_image_url(image_keys.get("original", "")),
+                    "imageThumbUrl": image_url(image_keys.get("thumb", "")),
+                    "imageOriginalUrl": image_url(image_keys.get("original", "")),
                     "imagePrompt": image_prompt,
                     "searchImageUrls": filtered_urls,
                     "createdAt": now_ts,
@@ -206,7 +207,7 @@ class LetterPipeline:
         except Exception as e:
             if image_keys:
                 try:
-                    await delete_image_variants(image_keys)
+                    await delete_images(image_keys)
                 except Exception:
                     logger.exception("image cleanup failed after pipeline error")
             tb = traceback.format_exc()

@@ -28,6 +28,7 @@ class User(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    is_developer = Column(Boolean, default=False, nullable=False)
 
     hometown = relationship("Hometown", back_populates="user", uselist=False,
                             cascade="all, delete-orphan")
@@ -82,29 +83,6 @@ class Profile(Base):
     user = relationship("User", back_populates="profile")
 
 
-# ──────────── landmarks ────────────
-
-class Landmark(Base):
-    __tablename__ = "landmarks"
-    __table_args__ = (
-        Index("ix_landmarks_user_used", "user_id", "is_used"),
-        Index("ix_landmarks_user_tier", "user_id", "tier"),
-        Index("ix_landmarks_user_name", "user_id", "name"),
-    )
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    name = Column(String(128), nullable=False)
-    description = Column(Text, default="")
-    scene_type = Column(String(32), default="other")
-    tier = Column(String(8), default="county")
-    used_count = Column(Integer, default=0)
-    last_used_day = Column(Integer, nullable=True)
-    source = Column(String(32), default="web_search_seed")
-    is_used = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-
-
 # ──────────── postcards ────────────
 
 class Postcard(Base):
@@ -119,8 +97,7 @@ class Postcard(Base):
     body = Column(Text, default="")
     poem = Column(Text, default="")
     place = Column(String(128), default="")
-    landmark_id = Column(Integer, ForeignKey("landmarks.id"), nullable=True)
-    landmark_description = Column(Text, default="")
+    generation_place = Column(String(128), default="")
     mood = Column(String(32), default="平静")
     image_thumb_key = Column(String(512), nullable=False, default="")
     image_card_key = Column(String(512), nullable=False, default="")
@@ -307,3 +284,47 @@ class SystemEvent(Base):
     request_id = Column(String(64), default="")
     event_metadata = Column("metadata", JSON, default=dict)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class RateLimitEvent(Base):
+    """持久化认证限流事件，服务重启后仍然有效。"""
+    __tablename__ = "rate_limit_events"
+    __table_args__ = (Index("ix_rate_limit_events_key_time", "key", "created_at"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(256), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class ApiMetric(Base):
+    """按方法和归一化路径聚合的 API 指标。"""
+    __tablename__ = "api_metrics"
+    __table_args__ = (UniqueConstraint("method", "path"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    method = Column(String(12), nullable=False)
+    path = Column(String(256), nullable=False)
+    count = Column(Integer, default=0, nullable=False)
+    success = Column(Integer, default=0, nullable=False)
+    client_errors = Column(Integer, default=0, nullable=False)
+    server_errors = Column(Integer, default=0, nullable=False)
+    total_ms = Column(Integer, default=0, nullable=False)
+    max_ms = Column(Integer, default=0, nullable=False)
+    last_status = Column(Integer, default=0, nullable=False)
+    last_at = Column(DateTime, nullable=True)
+
+
+class StorageDeletionTask(Base):
+    """OSS 删除失败时的重试任务。"""
+    __tablename__ = "storage_deletion_tasks"
+    __table_args__ = (Index("ix_storage_tasks_status_updated", "status", "updated_at"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    entity_type = Column(String(32), nullable=False)
+    entity_id = Column(Integer, nullable=False)
+    object_keys = Column(JSON, nullable=False)
+    status = Column(String(16), default="pending", nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

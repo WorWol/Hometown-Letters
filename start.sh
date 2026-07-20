@@ -2,16 +2,14 @@
 # ═══════════════════════════════════════════════════════════════
 # 故乡来信 — 一键启动脚本（Mac / Linux）
 # ═══════════════════════════════════════════════════════════════
-# 自动：创建虚拟环境 → 安装依赖 → 加载 .env → 启动服务
+# 自动：创建虚拟环境 → 安装依赖 → 执行数据库迁移 → 启动服务
 #
 # 使用方法：
 #   ./start.sh              # 一键启动
 #   ./start.sh --port 9090  # 指定端口
 #   ./start.sh --setup-only # 仅创建 venv + 安装依赖
 #
-# Windows 用户请使用: .\start.ps1 (PowerShell)
 # Docker 用户请使用:  docker compose up
-# 跨平台 Python:      python run.py
 # ═══════════════════════════════════════════════════════════════
 
 set -e
@@ -148,6 +146,10 @@ if $SETUP_ONLY; then
     echo -e "${GREEN}    启动命令: ./start.sh${NC}"
     exit 0
 fi
+
+echo -e "${CYAN}── 执行数据库迁移 ──${NC}"
+bash "$PROJECT_DIR/scripts/migrate_db.sh"
+echo -e "${GREEN}[✓] 数据库已更新${NC}"
 
 echo -e "${GREEN}[✓] 启动服务: http://${HOST}:${PORT}${NC}"
 echo -e "${GREEN}[✓] API 文档: http://${HOST}:${PORT}/docs${NC}"

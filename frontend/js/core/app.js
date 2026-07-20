@@ -48,6 +48,7 @@ const App = {
     return {
       ...postcard,
       createdAt,
+      generationPlace: postcard.generationPlace ?? postcard.generation_place ?? postcard.place ?? '',
       imageUrl: this.getMediaUrl(postcard),
       usedFallback: postcard.usedFallback ?? postcard.used_fallback ?? false,
       keywords: postcard.keywords ?? postcard.tags ?? [],

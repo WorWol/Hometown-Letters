@@ -19,11 +19,12 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def create_token(user_id: int, username: str) -> str:
+def create_token(user_id: int, username: str, *, is_developer: bool = False) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.token_expire_minutes)
     payload = {
         "sub": str(user_id),
         "username": username,
+        "is_developer": is_developer,
         "exp": expire,
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)

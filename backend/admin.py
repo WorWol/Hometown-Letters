@@ -1,26 +1,24 @@
-"""开发者后台 API。
-
-这些接口只面向开发者，不复用普通用户 JWT；必须提供服务器端 ADMIN_TOKEN。
-"""
+"""开发者后台 API。所有接口统一使用开发者账号 Bearer Token。"""
 from __future__ import annotations
 
-import asyncio
 import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text
 
 from config import settings
 from db.database import async_session
-from db.models import Letter, Mail, Postcard, SystemEvent, User
+from db.models import Letter, Postcard, StorageDeletionTask, SystemEvent, User
 from logger import LOG_FILE
-from services import image_storage
-from services.api_metrics import api_metrics
+import storage
+from services import persistent_metrics
 from services.runtime_metrics import snapshot as runtime_snapshot
+from services.data_service import delete_postcard as remove_postcard
+from auth.developer import require_current_developer
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 _started_at = time.time()
@@ -39,11 +37,6 @@ def _read_log_tail(path: Path, limit: int) -> list[str]:
             file.seek(-read_size, 1)
             lines = buffer.decode("utf-8", errors="replace").splitlines()
     return lines[-limit:]
-
-
-def _require_admin(x_admin_token: str | None) -> None:
-    if not settings.admin_token or x_admin_token != settings.admin_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="管理员认证失败")
 
 
 class PostcardPatch(BaseModel):
@@ -67,6 +60,7 @@ def _postcard_dict(row: Postcard) -> dict:
         "body": row.body,
         "poem": row.poem,
         "place": row.place,
+        "generationPlace": row.generation_place,
         "mood": row.mood,
         "tags": row.tags or [],
         "imagePrompt": row.image_prompt,
@@ -82,28 +76,22 @@ def _postcard_dict(row: Postcard) -> dict:
 
 def _postcard_image_urls(row: Postcard) -> dict[str, str]:
     return {
-        "thumb": image_storage.get_image_url(row.image_thumb_key),
-        "card": image_storage.get_image_url(row.image_card_key),
-        "original": image_storage.get_image_url(row.image_original_key),
+        "thumb": storage.image_url(row.image_thumb_key),
+        "card": storage.image_url(row.image_card_key),
+        "original": storage.image_url(row.image_original_key),
     }
 
 
 async def _oss_key_status(keys: dict[str, str]) -> dict[str, bool | None]:
     """检查三个变体；OSS 请求放到线程，避免阻塞 FastAPI 事件循环。"""
-    result: dict[str, bool | None] = {}
-    if settings.storage_backend.lower() == "oss":
-        bucket = image_storage._get_bucket("upload")
-        for name, key in keys.items():
-            result[name] = bool(key) and await asyncio.to_thread(bucket.object_exists, key)
-    else:
-        for name, key in keys.items():
-            result[name] = bool(key) and (image_storage.IMAGES_DIR / key).is_file()
-    return result
+    return {
+        name: bool(key) and await storage.object_exists_async(key)
+        for name, key in keys.items()
+    }
 
 
 @router.get("/overview")
-async def overview(x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def overview(developer: User = Depends(require_current_developer)):
     async with async_session() as db:
         users = await db.scalar(select(func.count(User.id))) or 0
         letters = await db.scalar(select(func.count(Letter.id))) or 0
@@ -127,21 +115,19 @@ async def overview(x_admin_token: str | None = Header(default=None)):
             "errorsToday": recent_errors,
             "disk": {"total": disk.total, "used": disk.used, "free": disk.free},
             "storageBackend": settings.storage_backend,
-            "apiMetrics": api_metrics.snapshot(limit=10),
+            "apiMetrics": await persistent_metrics.snapshot(limit=10),
             "runtime": runtime_snapshot(),
         },
     }
 
 
 @router.get("/metrics")
-async def metrics(x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
-    return {"ok": True, "data": api_metrics.snapshot(limit=200)}
+async def metrics(developer: User = Depends(require_current_developer)):
+    return {"ok": True, "data": await persistent_metrics.snapshot(limit=200)}
 
 
 @router.get("/runtime")
-async def runtime(x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def runtime(developer: User = Depends(require_current_developer)):
     return {"ok": True, "data": runtime_snapshot()}
 
 
@@ -149,9 +135,8 @@ async def runtime(x_admin_token: str | None = Header(default=None)):
 async def users(
     q: str = Query(default="", max_length=64),
     limit: int = Query(default=100, ge=1, le=500),
-    x_admin_token: str | None = Header(default=None),
+    developer: User = Depends(require_current_developer),
 ):
-    _require_admin(x_admin_token)
     async with async_session() as db:
         query = select(User).order_by(User.id.desc()).limit(limit)
         if q.strip():
@@ -178,9 +163,8 @@ async def postcards(
     user_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
-    x_admin_token: str | None = Header(default=None),
+    developer: User = Depends(require_current_developer),
 ):
-    _require_admin(x_admin_token)
     async with async_session() as db:
         query = select(Postcard).order_by(Postcard.created_at.desc()).offset(offset).limit(limit)
         if user_id is not None:
@@ -213,8 +197,7 @@ async def postcards(
 
 
 @router.get("/postcards/{postcard_id}")
-async def postcard_detail(postcard_id: int, x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def postcard_detail(postcard_id: int, developer: User = Depends(require_current_developer)):
     async with async_session() as db:
         row = await db.scalar(select(Postcard).where(Postcard.id == postcard_id))
         if row is None:
@@ -229,10 +212,8 @@ async def postcard_detail(postcard_id: int, x_admin_token: str | None = Header(d
 async def update_postcard(
     postcard_id: int,
     body: PostcardPatch,
-    x_admin_token: str | None = Header(default=None),
-    x_admin_actor: str | None = Header(default="developer"),
+    developer: User = Depends(require_current_developer),
 ):
-    _require_admin(x_admin_token)
     changes = body.model_dump(exclude_unset=True)
     field_map = {"imagePrompt": "image_prompt", "letterText": "letter_text"}
     changes = {field_map.get(key, key): value for key, value in changes.items()}
@@ -248,7 +229,7 @@ async def update_postcard(
             level="info",
             event_type="admin_postcard_updated",
             message="developer updated postcard fields",
-            event_metadata={"actor": x_admin_actor or "developer", "postcardId": postcard_id, "fields": list(changes), "before": before},
+            event_metadata={"actor": developer.username, "postcardId": postcard_id, "fields": list(changes), "before": before},
         ))
         await db.commit()
         data = _postcard_dict(row)
@@ -258,29 +239,20 @@ async def update_postcard(
 @router.delete("/postcards/{postcard_id}")
 async def delete_postcard(
     postcard_id: int,
-    x_admin_token: str | None = Header(default=None),
-    x_admin_actor: str | None = Header(default="developer"),
+    developer: User = Depends(require_current_developer),
 ):
-    _require_admin(x_admin_token)
     async with async_session() as db:
         row = await db.scalar(select(Postcard).where(Postcard.id == postcard_id))
         if row is None:
             raise HTTPException(status_code=404, detail="明信片不存在")
-        keys = {"thumb": row.image_thumb_key, "card": row.image_card_key, "original": row.image_original_key}
-        # 先删除对象；失败会抛出，数据库记录仍保留。
-        try:
-            await image_storage.delete_image_variants(keys)
-        except Exception as error:
-            raise HTTPException(status_code=502, detail="OSS 图片删除失败，数据库记录未删除") from error
+        # OSS 失败会进入清理任务，但数据库删除继续提交，避免后台操作长期卡住。
+        await remove_postcard(db, row)
         before = _postcard_dict(row)
-        await db.execute(update(Mail).where(Mail.attached_postcard_id == row.id).values(attached_postcard_id=None))
-        await db.execute(update(User).where(User.id == row.user_id, User.postcard_count > 0).values(postcard_count=User.postcard_count - 1))
-        await db.delete(row)
         db.add(SystemEvent(
             level="warning",
             event_type="admin_postcard_deleted",
             message="developer deleted postcard and OSS objects",
-            event_metadata={"actor": x_admin_actor or "developer", "postcardId": postcard_id, "before": before},
+            event_metadata={"actor": developer.username, "postcardId": postcard_id, "before": before},
         ))
         await db.commit()
     return {"ok": True, "data": {"id": postcard_id}}
@@ -289,9 +261,8 @@ async def delete_postcard(
 @router.get("/storage/check")
 async def storage_check(
     postcard_id: int | None = Query(default=None, ge=1),
-    x_admin_token: str | None = Header(default=None),
+    developer: User = Depends(require_current_developer),
 ):
-    _require_admin(x_admin_token)
     async with async_session() as db:
         query = select(Postcard).order_by(Postcard.id)
         if postcard_id is not None:
@@ -305,13 +276,46 @@ async def storage_check(
     return {"ok": True, "data": {"items": items, "checked": len(items)}}
 
 
+@router.get("/storage/tasks")
+async def storage_tasks(
+    status_filter: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=100, ge=1, le=500),
+    developer: User = Depends(require_current_developer),
+):
+    async with async_session() as db:
+        query = select(StorageDeletionTask).order_by(StorageDeletionTask.updated_at.asc()).limit(limit)
+        if status_filter:
+            query = query.where(StorageDeletionTask.status == status_filter)
+        rows = (await db.scalars(query)).all()
+    return {"ok": True, "data": [
+        {
+            "id": row.id,
+            "entityType": row.entity_type,
+            "entityId": row.entity_id,
+            "objectKeys": row.object_keys,
+            "status": row.status,
+            "attempts": row.attempts,
+            "lastError": row.last_error,
+            "createdAt": row.created_at.isoformat(),
+            "updatedAt": row.updated_at.isoformat(),
+        }
+        for row in rows
+    ]}
+
+
+@router.post("/storage/tasks/retry")
+async def retry_storage_tasks(developer: User = Depends(require_current_developer)):
+    from services.storage_tasks import retry_pending
+    completed = await retry_pending()
+    return {"ok": True, "data": {"completed": completed}}
+
+
 @router.get("/events")
 async def events(
     limit: int = Query(default=100, ge=1, le=500),
     level: str | None = Query(default=None),
-    x_admin_token: str | None = Header(default=None),
+    developer: User = Depends(require_current_developer),
 ):
-    _require_admin(x_admin_token)
     async with async_session() as db:
         query = select(SystemEvent).order_by(SystemEvent.created_at.desc()).limit(limit)
         if level:
@@ -338,10 +342,9 @@ async def events(
 @router.get("/logs")
 async def logs(
     limit: int = Query(default=200, ge=1, le=1000),
-    x_admin_token: str | None = Header(default=None),
+    developer: User = Depends(require_current_developer),
 ):
     """读取本地应用日志的末尾内容，不上传 OSS，也不暴露任意文件路径。"""
-    _require_admin(x_admin_token)
     log_file = Path(LOG_FILE)
     if not log_file.exists():
         return {"ok": True, "data": {"path": str(log_file), "lines": []}}
@@ -356,4 +359,16 @@ async def logs(
 
 @router.get("/health")
 async def health():
-    return {"ok": True, "data": {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}}
+    try:
+        async with async_session() as db:
+            await db.execute(text("SELECT 1"))
+            migration = await db.scalar(text("SELECT version_num FROM alembic_version LIMIT 1"))
+        storage.validate_config()
+    except Exception as error:
+        raise HTTPException(status_code=503, detail=f"服务健康检查失败: {error}") from error
+    return {"ok": True, "data": {
+        "status": "ok",
+        "migration": migration,
+        "storage": "configured",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }}

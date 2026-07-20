@@ -15,6 +15,7 @@ BRANCH="${DEPLOY_BRANCH:-main}"
 HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:8787/api/admin/health}"
 HEALTH_RETRIES="${DEPLOY_HEALTH_RETRIES:-30}"
 HEALTH_INTERVAL="${DEPLOY_HEALTH_INTERVAL:-2}"
+COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-docker-compose.prod.yml}"
 FORCE=false
 
 RED='\033[0;31m'
@@ -43,12 +44,13 @@ command -v git >/dev/null 2>&1 || die "找不到 git。"
 command -v docker >/dev/null 2>&1 || die "找不到 docker。"
 command -v curl >/dev/null 2>&1 || die "找不到 curl。"
 docker compose version >/dev/null 2>&1 || die "找不到 Docker Compose。"
-[[ -f docker-compose.yml || -f compose.yaml ]] || die "项目中找不到 Compose 配置。"
+[[ -f "$COMPOSE_FILE" ]] || die "找不到生产 Compose 配置：$COMPOSE_FILE"
 [[ -f .env ]] || die "找不到 .env；脚本不会自动生成或覆盖生产配置。"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "当前目录不是 Git 仓库：$PROJECT_ROOT"
 
 log "部署目录：$PROJECT_ROOT"
 log "目标分支：origin/$BRANCH"
+log "Compose 配置：$COMPOSE_FILE"
 
 # 只阻止已跟踪文件改动；backend/data、generated_images 等运行数据可以保留。
 if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -63,23 +65,29 @@ git checkout -B "$BRANCH" "origin/$BRANCH" >/dev/null
 ok "代码版本：$(git rev-parse --short HEAD)"
 
 log "校验 Compose 配置……"
-docker compose config -q
+docker compose -f "$COMPOSE_FILE" config -q
 ok "Compose 配置有效；.env 未被覆盖。"
 
 log "构建并启动前后端服务……"
-docker compose up -d --build
+docker compose -f "$COMPOSE_FILE" build
+
+log "执行数据库迁移……"
+docker compose -f "$COMPOSE_FILE" run --rm app bash /app/scripts/migrate_db.sh
+ok "数据库迁移完成。"
+
+docker compose -f "$COMPOSE_FILE" up -d --no-build
 
 log "等待健康检查：$HEALTH_URL"
 for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
   if curl --fail --silent --show-error --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
     ok "服务已启动并通过健康检查。"
-    docker compose ps
+    docker compose -f "$COMPOSE_FILE" ps
     exit 0
   fi
   sleep "$HEALTH_INTERVAL"
 done
 
-docker compose ps >&2 || true
+docker compose -f "$COMPOSE_FILE" ps >&2 || true
 warn "健康检查未通过，输出最近日志："
-docker compose logs --tail=80 >&2 || true
+docker compose -f "$COMPOSE_FILE" logs --tail=80 >&2 || true
 die "部署未通过健康检查。"

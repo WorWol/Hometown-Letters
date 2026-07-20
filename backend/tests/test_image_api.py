@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from services.image_service import ImageService
-from services.image_storage import get_image_url
+from storage import image_url
 
 
 def test_normalize_image_size_aliases():
@@ -16,8 +16,9 @@ def test_normalize_image_size_aliases():
 
 def test_external_fallback_url_is_not_wrapped():
     url = "https://images.example.com/fallback.jpg"
-    assert get_image_url(url) == url
+    assert image_url(url) == url
 
 
-def test_local_image_id_uses_api_route():
-    assert get_image_url("pc-test") == "/api/image/pc-test"
+def test_local_image_id_uses_media_route(monkeypatch):
+    monkeypatch.setattr("config.settings.storage_backend", "local")
+    assert image_url("pc-test") == "/media/pc-test"

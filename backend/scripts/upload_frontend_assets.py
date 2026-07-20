@@ -12,13 +12,13 @@ PROJECT_DIR = BACKEND_DIR.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 from config import settings  # noqa: E402
-from services.image_storage import validate_storage_config  # noqa: E402
+from storage import validate_config  # noqa: E402
 
 
 def main() -> None:
     if settings.storage_backend.lower() != "oss":
         raise SystemExit("请先在 .env 设置 STORAGE_BACKEND=oss")
-    validate_storage_config()
+    validate_config()
 
     auth = oss2.Auth(settings.oss_access_key_id, settings.oss_access_key_secret)
     bucket = oss2.Bucket(auth, settings.oss_upload_endpoint, settings.oss_bucket_name)

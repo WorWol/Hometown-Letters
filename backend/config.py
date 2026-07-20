@@ -18,7 +18,6 @@
 """
 import os
 from dataclasses import dataclass, field
-from typing import Any
 
 # 优先从项目根目录的 .env 文件加载
 _env_loaded = False
@@ -66,7 +65,6 @@ class Settings:
             "VOLC_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"
         )
     )
-    serper_search_url: str = "https://google.serper.dev/search"
     serper_image_url: str = "https://google.serper.dev/images"
 
     # ── Proxy 配置 ──
@@ -132,7 +130,6 @@ class Settings:
     admin_log_lines: int = field(
         default_factory=lambda: int(_env("ADMIN_LOG_LINES", "200"))
     )
-    admin_token: str = field(default_factory=lambda: _env("ADMIN_TOKEN", ""))
     environment: str = field(default_factory=lambda: _env("APP_ENV", "development"))
     allowed_origins: str = field(default_factory=lambda: _env("ALLOWED_ORIGINS", ""))
 
@@ -160,10 +157,5 @@ class Settings:
         }
         specific = service_map.get(service, "")
         return specific or self.http_proxy or self.https_proxy or None
-
-    def should_proxy(self, service: str) -> bool:
-        """判断某个服务是否需要配置代理"""
-        return bool(self.get_proxy_for(service))
-
 
 settings = Settings()

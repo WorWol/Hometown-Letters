@@ -1,9 +1,9 @@
-"""写信管道的图片降级持久化回归测试。"""
+"""写信管道失败时不产生半成品数据。"""
 from __future__ import annotations
 
 import json
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from db.models import Base, Hometown, Postcard, User
@@ -64,7 +64,7 @@ class MockMemory:
         return None
 
 
-async def test_external_fallback_url_is_persisted(monkeypatch):
+async def test_image_generation_failure_does_not_persist_partial_data(monkeypatch):
     async def no_download(url: str):
         return None
 
@@ -94,10 +94,8 @@ async def test_external_fallback_url_is_persisted(monkeypatch):
         )
         result = await pipeline.process(db, user, "我想起旧街。", "旧街", "怀念")
 
-        assert result["ok"] is True
-        assert result["data"]["imageUrl"] == "https://images.example.com/fallback.jpg"
-        saved = (await db.execute(select(Postcard))).scalar_one()
-        assert saved.image_path == "https://images.example.com/fallback.jpg"
-        assert saved.used_fallback is True
+        assert result["ok"] is False
+        assert "provider unavailable" in result["error"]
+        assert await db.scalar(select(func.count()).select_from(Postcard)) == 0
 
     await engine.dispose()

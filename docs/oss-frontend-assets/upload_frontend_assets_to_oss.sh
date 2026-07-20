@@ -53,11 +53,11 @@ case "${1:-}" in
 import sys
 sys.path.insert(0, "backend")
 from config import settings
-from services.image_storage import validate_storage_config
+from storage import validate_config
 
 if settings.storage_backend.lower() != "oss":
     raise SystemExit("STORAGE_BACKEND 当前不是 oss")
-validate_storage_config()
+validate_config()
 print("OSS 配置检查通过。凭证未打印。")
 print(f"素材前缀：{settings.oss_asset_prefix.strip('/') or 'assets'}")
 PY

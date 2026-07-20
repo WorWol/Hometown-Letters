@@ -32,8 +32,7 @@ Thumbs.db
 # 截图/归档
 archive/
 screenshots/
-*.png
-*.jpg
+frontend_screenshot.png
 
 # 环境变量
 .env

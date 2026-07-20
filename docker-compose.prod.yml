@@ -1,0 +1,32 @@
+# ECS/生产 Compose：镜像内包含完整代码和前端素材，不挂载宿主机源码，不启用热重载。
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hometown-letters
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    volumes:
+      - app-data:/app/backend/data
+      - app-images:/app/backend/generated_images
+    command:
+      - uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/admin/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  app-data:
+  app-images:

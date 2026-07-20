@@ -35,14 +35,15 @@ services:
       # 忽略容器内的 __pycache__，避免权限问题
       - /app/backend/__pycache__
     command: >
-      uvicorn main:app
+      sh -c "bash /app/scripts/migrate_db.sh && exec uvicorn main:app
       --host 0.0.0.0
       --port 8787
       --reload
-      --reload-dir /app/backend
+      --reload-dir /app/backend"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8787/docs"]
+      # 使用 Python 标准库，避免为健康检查额外安装 curl 和 apt 软件源。
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/admin/health', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -29,7 +29,7 @@
 |---|------|
 | **后端框架** | FastAPI (Python 3.12+) |
 | **数据库** | SQLite + SQLAlchemy 2.0 (async) + Alembic |
-| **认证** | JWT (python-jose) + bcrypt (passlib) |
+| **认证** | JWT (python-jose) + bcrypt |
 | **LLM** | DeepSeek Chat API (OpenAI 兼容) |
 | **图片搜索** | Serper (Google 搜索) |
 | **图片生成** | 火山引擎 (Volc Ark) |
@@ -50,7 +50,8 @@ Hometown-Letters/
 │   ├── requirements.txt         # Python 依赖
 │   ├── alembic.ini              # Alembic 配置
 │   ├── api/
-│   │   └── routes.py            # 所有业务 API 端点
+│   │   ├── router.py            # 业务 API 注册
+│   │   └── routers/              # 状态、信件、明信片、邮件、社区等 API
 │   ├── auth/
 │   │   ├── routes.py            # 认证端点（注册/登录）
 │   │   ├── security.py          # JWT + bcrypt
@@ -65,7 +66,9 @@ Hometown-Letters/
 │   │   ├── llm_service.py       # DeepSeek 封装
 │   │   ├── search_service.py    # Serper 图片/文字搜索
 │   │   ├── image_service.py     # 火山引擎图片生成
-│   │   ├── image_storage.py     # 本地/OSS 双后端存储
+│   │   ├── storage.py           # 本地/OSS 双后端存储
+│   │   ├── data_service.py      # 数据删除和派生计数
+│   │   └── persistent_metrics.py # API 指标和限流持久化
 │   │   ├── poem_service.py      # 诗歌 + 标题 + 正文生成
 │   │   ├── selection_service.py # 图片去重/筛选
 │   │   └── memory_service.py    # 记忆摘要 + 人格画像
@@ -128,11 +131,10 @@ docker compose down      # 停止
 ### 3. 本地开发
 
 ```bash
-cd backend
-pip install -r requirements.txt
-python main.py
+./start.sh
 ```
 
+`start.sh` 会创建/复用虚拟环境、安装依赖、执行数据库迁移，然后启动热重载服务。
 服务启动在 `http://localhost:8787`，API 文档自动生成在 `/docs`。
 
 ---
@@ -228,7 +230,6 @@ curl -X POST http://localhost:8787/api/mail/send \
 | `hometowns` | 故乡地理信息 |
 | `letters` | 原始信件 |
 | `postcards` | 生成的明信片 |
-| `landmarks` | 地标库 |
 | `memories` | 用户保存的记忆 |
 | `letter_summaries` | 每 5 封的批量摘要 |
 | `letter_memories` | 记忆信号抽取 |
@@ -241,16 +242,11 @@ curl -X POST http://localhost:8787/api/mail/send \
 ## 📝 数据库迁移
 
 ```bash
-cd backend
+# 本地执行迁移
+bash scripts/migrate_db.sh
 
-# 生成新迁移（模型变更后）
-alembic revision --autogenerate -m "描述"
-
-# 执行迁移
-alembic upgrade head
-
-# 回滚
-alembic downgrade -1
+# 生产部署脚本会自动执行迁移
+bash scripts/deploy_main.sh
 ```
 
 ---

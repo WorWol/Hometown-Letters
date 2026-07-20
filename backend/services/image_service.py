@@ -4,7 +4,6 @@
 1. 使用 volcenginesdkarkruntime SDK（如果已安装）
 2. 使用 httpx 直接调用 OpenAI 兼容 API
 """
-import os
 import base64
 import json
 import logging

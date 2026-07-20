@@ -13,7 +13,7 @@ from auth.security import create_token, hash_password, verify_password
 from config import settings
 from db.database import get_db
 from db.models import SystemEvent, User
-from services.rate_limiter import check_login_failure, check_registration, clear_login_failures
+from services.persistent_rate_limiter import check_login_failure, check_registration, clear_login_failures
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -90,10 +90,10 @@ async def register(request: Request, body: AuthRequest, db: AsyncSession = Depen
         message="user registered",
         user_id=user.id,
     ))
-    token = create_token(user.id, user.username)
+    token = create_token(user.id, user.username, is_developer=user.is_developer)
     return {
         "ok": True,
-        "data": {"token": token, "user_id": user.id},
+        "data": {"token": token, "user_id": user.id, "is_developer": user.is_developer},
     }
 
 
@@ -117,10 +117,10 @@ async def login(request: Request, body: AuthRequest, db: AsyncSession = Depends(
         )
 
     await clear_login_failures(ip, username)
-    token = create_token(user.id, user.username)
+    token = create_token(user.id, user.username, is_developer=user.is_developer)
     return {
         "ok": True,
-        "data": {"token": token, "user_id": user.id},
+        "data": {"token": token, "user_id": user.id, "is_developer": user.is_developer},
     }
 
 
@@ -134,5 +134,6 @@ async def me(user: User = Depends(get_current_user)):
             "current_day": user.current_day,
             "postcard_limit": user.postcard_limit,
             "postcard_count": user.postcard_count,
+            "is_developer": user.is_developer,
         },
     }

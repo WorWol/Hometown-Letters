@@ -39,6 +39,21 @@ class MockLlm:
         return json.dumps(MOCK_ANALYSIS, ensure_ascii=False)
 
 
+class HometownFallbackLlm:
+    """模拟没有明确地点时，模型使用家乡作为搜图地点。"""
+
+    def chat(self, system_prompt, user_message, **kwargs):
+        return json.dumps({
+            "visual_themes": ["东江湖湖面", "山路", "傍晚灯火"],
+            "emotional_tone": "温暖/怀念",
+            "scene_type": "lakeside_dam",
+            "search_keywords": ["湖南郴州资兴 东江湖 湖面", "资兴 东江湖 sunset"],
+            "core_place": "湖南郴州资兴",
+            "generation_place": "湖南郴州资兴 东江湖",
+            "image_prompt": "16-bit pixel art of a quiet lakeside town with layered mountains and warm evening lights",
+        }, ensure_ascii=False)
+
+
 class MockSearch:
     """模拟搜索 API，返回假 URL 列表"""
     async def search_images(self, query, num=6):
@@ -100,6 +115,18 @@ def test_letter_analysis():
     # 1.2 core_place 应为 华中科技大学
     assert result["core_place"] == "华中科技大学", f"core_place 应为'华中科技大学'，实际: {result['core_place']}"
     print("  PASS 1.2: core_place = 华中科技大学")
+
+
+def test_hometown_is_used_when_letter_has_no_explicit_place():
+    from services.letter_analysis_service import LetterAnalysisService
+
+    result = LetterAnalysisService(HometownFallbackLlm()).analyze_letter_deep(
+        letter_text="今天只是想念家乡傍晚的风。",
+        hometown={"province": "湖南", "city": "郴州", "county": "资兴"},
+    )
+
+    assert result["generation_place"] == "湖南郴州资兴 东江湖"
+    assert any("资兴" in keyword for keyword in result["search_keywords"])
 
     # 1.3 image_prompt 不含中文地名
     assert "华中科技大学" not in result["image_prompt"], f"image_prompt 不应含地名，实际: {result['image_prompt']}"

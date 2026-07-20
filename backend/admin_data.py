@@ -9,18 +9,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Query
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, delete, func, or_, select, update
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
-from admin import _require_admin
+from auth.developer import require_current_developer
 from auth.security import hash_password
 from db.database import async_session
 from db.models import (
-    Base, Hometown, Landmark, Letter, LetterLike, LetterMemory, LetterSummary,
+    Base, Hometown, Letter, LetterLike, LetterMemory, LetterSummary,
     Mail, Memory, PastSelfProfile, Postcard, Profile, SystemEvent, User,
 )
-from services import image_storage
+from services.data_service import delete_letter, delete_postcard, delete_user, recalculate_postcard_count
 
 router = APIRouter(prefix="/api/admin", tags=["admin-data"])
 
@@ -28,7 +28,6 @@ TABLES: dict[str, type[Base]] = {
     "users": User,
     "hometowns": Hometown,
     "profiles": Profile,
-    "landmarks": Landmark,
     "postcards": Postcard,
     "letters": Letter,
     "letter_summaries": LetterSummary,
@@ -40,7 +39,7 @@ TABLES: dict[str, type[Base]] = {
     "system_events": SystemEvent,
 }
 
-READ_ONLY_FIELDS = {"id", "hashed_password", "created_at", "updated_at"}
+READ_ONLY_FIELDS = {"id", "hashed_password", "created_at", "updated_at", "postcard_count", "is_developer"}
 READ_ONLY_TABLES = {"system_events"}
 MAX_JSON_BYTES = 200_000
 
@@ -167,8 +166,7 @@ def _search_clause(model: type[Base], term: str):
 
 
 @router.get("/schema")
-async def schema(x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def schema(developer: User = Depends(require_current_developer)):
     return {"ok": True, "data": {table: {"table": table, "fields": [_field_meta(column, table, attribute.key) for attribute in model.__mapper__.column_attrs for column in attribute.columns]}
                                   for table, model in TABLES.items()}}
 
@@ -181,9 +179,8 @@ async def list_rows(
     offset: int = Query(default=0, ge=0),
     order: str = Query(default="id"),
     direction: str = Query(default="desc"),
-    x_admin_token: str | None = Header(default=None),
+    developer: User = Depends(require_current_developer),
 ):
-    _require_admin(x_admin_token)
     model = _model(table)
     columns = _column_map(model)
     if order not in columns:
@@ -206,8 +203,7 @@ async def list_rows(
 
 
 @router.get("/data/{table}/{row_id}")
-async def get_row(table: str, row_id: int, x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def get_row(table: str, row_id: int, developer: User = Depends(require_current_developer)):
     model = _model(table)
     async with async_session() as db:
         row = await db.get(model, row_id)
@@ -217,8 +213,7 @@ async def get_row(table: str, row_id: int, x_admin_token: str | None = Header(de
 
 
 @router.post("/data/{table}")
-async def create_row(table: str, body: dict[str, Any], x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def create_row(table: str, body: dict[str, Any], developer: User = Depends(require_current_developer)):
     model = _model(table)
     values = _payload(table, body, creating=True)
     async with async_session() as db:
@@ -234,8 +229,7 @@ async def create_row(table: str, body: dict[str, Any], x_admin_token: str | None
 
 
 @router.patch("/data/{table}/{row_id}")
-async def update_row(table: str, row_id: int, body: dict[str, Any], x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def update_row(table: str, row_id: int, body: dict[str, Any], developer: User = Depends(require_current_developer)):
     model = _model(table)
     values = _payload(table, body, creating=False)
     async with async_session() as db:
@@ -253,43 +247,8 @@ async def update_row(table: str, row_id: int, body: dict[str, Any], x_admin_toke
     return {"ok": True, "data": _serialize_row(row, model)}
 
 
-async def _delete_user_data(db, user_id: int) -> None:
-    # 先处理跨用户引用，再删除用户自己的业务记录。
-    await db.execute(update(Mail).where(or_(Mail.sender_id == user_id, Mail.recipient_id == user_id)).values(
-        attached_postcard_id=None, attached_letter_id=None,
-    ))
-    postcards = (await db.execute(select(Postcard).where(Postcard.user_id == user_id))).scalars().all()
-    for row in postcards:
-        await image_storage.delete_image_variants({"thumb": row.image_thumb_key, "card": row.image_card_key, "original": row.image_original_key})
-    postcard_ids = [row.id for row in postcards]
-    letter_ids = [row.id for row in (await db.execute(select(Letter).where(Letter.user_id == user_id))).scalars().all()]
-    if postcard_ids:
-        await db.execute(update(Mail).where(Mail.attached_postcard_id.in_(postcard_ids)).values(attached_postcard_id=None))
-    if letter_ids:
-        await db.execute(update(Mail).where(Mail.attached_letter_id.in_(letter_ids)).values(attached_letter_id=None))
-        summary_ids = [row.id for row in (await db.execute(select(LetterSummary).where(
-            or_(LetterSummary.user_id == user_id, LetterSummary.start_letter_id.in_(letter_ids), LetterSummary.end_letter_id.in_(letter_ids))
-        ))).scalars().all()]
-        await db.execute(delete(LetterLike).where(LetterLike.letter_id.in_(letter_ids)))
-        if summary_ids:
-            await db.execute(delete(LetterMemory).where(LetterMemory.summary_id.in_(summary_ids)))
-            await db.execute(delete(LetterSummary).where(LetterSummary.id.in_(summary_ids)))
-        await db.execute(delete(Letter).where(Letter.id.in_(letter_ids)))
-    await db.execute(delete(Mail).where(or_(Mail.sender_id == user_id, Mail.recipient_id == user_id)))
-    for model, column in (
-        (LetterLike, LetterLike.user_id),
-        (LetterMemory, LetterMemory.user_id), (LetterSummary, LetterSummary.user_id),
-        (Memory, Memory.user_id), (PastSelfProfile, PastSelfProfile.user_id),
-        (Profile, Profile.user_id), (Hometown, Hometown.user_id), (Postcard, Postcard.user_id),
-        (Landmark, Landmark.user_id),
-    ):
-        await db.execute(delete(model).where(column == user_id))
-    await db.execute(update(SystemEvent).where(SystemEvent.user_id == user_id).values(user_id=None))
-
-
 @router.delete("/data/{table}/{row_id}")
-async def delete_row(table: str, row_id: int, x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def delete_row(table: str, row_id: int, developer: User = Depends(require_current_developer)):
     model = _model(table)
     if table in READ_ONLY_TABLES:
         raise HTTPException(status_code=405, detail="系统事件仅支持查询")
@@ -299,22 +258,11 @@ async def delete_row(table: str, row_id: int, x_admin_token: str | None = Header
             raise HTTPException(status_code=404, detail="数据不存在")
         try:
             if model is User:
-                await _delete_user_data(db, row_id)
-                await db.delete(row)
+                await delete_user(db, row)
             elif model is Postcard:
-                await image_storage.delete_image_variants({"thumb": row.image_thumb_key, "card": row.image_card_key, "original": row.image_original_key})
-                await db.execute(update(Mail).where(Mail.attached_postcard_id == row_id).values(attached_postcard_id=None))
-                await db.execute(update(User).where(User.id == row.user_id, User.postcard_count > 0).values(postcard_count=User.postcard_count - 1))
-                await db.delete(row)
+                await delete_postcard(db, row)
             elif model is Letter:
-                await db.execute(update(Mail).where(Mail.attached_letter_id == row_id).values(attached_letter_id=None))
-                await db.execute(delete(LetterLike).where(LetterLike.letter_id == row_id))
-                summaries = (await db.execute(select(LetterSummary).where(or_(LetterSummary.start_letter_id == row_id, LetterSummary.end_letter_id == row_id)))).scalars().all()
-                summary_ids = [summary.id for summary in summaries]
-                if summary_ids:
-                    await db.execute(delete(LetterMemory).where(LetterMemory.summary_id.in_(summary_ids)))
-                    await db.execute(delete(LetterSummary).where(LetterSummary.id.in_(summary_ids)))
-                await db.delete(row)
+                await delete_letter(db, row)
             elif model is LetterSummary:
                 await db.execute(delete(LetterMemory).where(LetterMemory.summary_id == row_id))
                 await db.delete(row)
@@ -328,3 +276,13 @@ async def delete_row(table: str, row_id: int, x_admin_token: str | None = Header
             await db.rollback()
             raise HTTPException(status_code=502, detail="删除失败，数据库未提交")
     return {"ok": True, "data": {"id": row_id, "table": table}}
+
+
+@router.post("/users/{user_id}/recalculate-postcard-count")
+async def recalculate_user_postcard_count(user_id: int, developer: User = Depends(require_current_developer)):
+    async with async_session() as db:
+        if await db.get(User, user_id) is None:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        count = await recalculate_postcard_count(db, user_id)
+        await db.commit()
+    return {"ok": True, "data": {"userId": user_id, "postcardCount": count}}

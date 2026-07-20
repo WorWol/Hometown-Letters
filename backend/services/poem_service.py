@@ -1,7 +1,7 @@
 """诗歌生成服务 — 为明信片作诗
 
 职责：
-1. 根据地标和搜索结果生成短诗
+1. 根据地点和搜索结果生成短诗
 2. 生成明信片标题和正文
 """
 from __future__ import annotations
@@ -30,12 +30,12 @@ class PoemService:
     def __init__(self, llm: LlmService | None = None):
         self.llm = llm or LlmService()
 
-    def generate_poem(self, landmark: dict,
+    def generate_poem(self, place_context: dict,
                       context: str = "",
                       analysis: dict | None = None) -> str:
-        """根据地标和搜索结果生成诗歌"""
-        place = landmark.get("name", "故乡")
-        desc = landmark.get("description", "")
+        """根据地点和搜索结果生成诗歌"""
+        place = place_context.get("name", "故乡")
+        desc = place_context.get("description", "")
         msg = f"地点：{place}"
         if desc:
             msg += f"\n描述：{desc}"
@@ -50,11 +50,11 @@ class PoemService:
                 msg += f"\n画面元素：{themes}"
         return self.llm.chat(SYSTEM_POEM, msg)
 
-    def generate_title(self, landmark: dict, poem: str,
+    def generate_title(self, place_context: dict, poem: str,
                        analysis: dict | None = None,
                        user_context: dict | None = None) -> str:
         """生成明信片标题"""
-        place = landmark.get("name", "故乡")
+        place = place_context.get("name", "故乡")
         msg = f"地点：{place}\n诗的内容：{poem}"
         if analysis:
             tone = analysis.get("emotional_tone", "")
@@ -68,12 +68,12 @@ class PoemService:
             msg += f"\n写信人的性格画像：{user_context['profile_summary'][:100]}"
         return self.llm.chat(SYSTEM_TITLE, msg, temperature=0.7, max_tokens=30)
 
-    def generate_body(self, landmark: dict, poem: str,
+    def generate_body(self, place_context: dict, poem: str,
                       letter_text: str = "",
                       analysis: dict | None = None,
                       user_context: dict | None = None) -> str:
         """生成明信片正文"""
-        place = landmark.get("name", "故乡")
+        place = place_context.get("name", "故乡")
         msg = f"地点：{place}\n诗：{poem}"
         if letter_text:
             msg += f"\n来信内容：{letter_text[:150]}"
@@ -99,16 +99,16 @@ class PoemService:
 
     def generate_image_prompt(
         self,
-        landmark: dict,
+        place_context: dict,
         scene_context: str = "",
         analysis: dict | None = None,
     ) -> str:
         """生成英文图像提示词（信件内容驱动，像素风）
 
-        输入从 landmark 数据改为信件分析结果。
+        输入地点上下文和信件分析结果。
         提示词描述的是信件中表达的场景，而不仅是地标本身。
         """
-        place = landmark.get("name", "故乡")
+        place = place_context.get("name", "故乡")
 
         if analysis and (analysis.get("visual_themes") or analysis.get("atmosphere")):
             # ── 信件驱动模式 ──
@@ -124,13 +124,13 @@ class PoemService:
                 f"Based on the above, write a detailed English image generation prompt "
                 f"(50-80 words) for a RETRO 16-BIT PIXEL ART scene. "
                 f"The image should capture the EXACT scene and emotion described in the letter "
-                f"— not just the landmark itself, but the specific visual elements and mood "
+                f"— not just the place itself, but the specific visual elements and mood "
                 f"the letter conveys.\n"
             )
         else:
             # ── 旧模式回退 ──
-            desc = landmark.get("description", "")
-            scene_type = landmark.get("scene_type", "other")
+            desc = place_context.get("description", "")
+            scene_type = place_context.get("scene_type", "other")
             style_map = {
                 "lakeside_dam": "waterside scene, gentle lake breeze, warm afternoon light",
                 "bridge_roadside": "old stone bridge, soft wind, dappled sunlight through trees",

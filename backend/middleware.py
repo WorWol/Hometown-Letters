@@ -6,7 +6,7 @@ import time
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-from services.api_metrics import api_metrics
+from services.persistent_metrics import record
 
 
 class ApiMetricsMiddleware(BaseHTTPMiddleware):
@@ -20,7 +20,7 @@ class ApiMetricsMiddleware(BaseHTTPMiddleware):
             status_code = response.status_code
             return response
         finally:
-            api_metrics.record(
+            await record(
                 request.method,
                 request.url.path,
                 status_code,
