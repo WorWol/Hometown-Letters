@@ -205,27 +205,6 @@ class ImageService:
             return None
 
     @staticmethod
-    async def download_and_encode(url: str) -> str | None:
-        """下载网络图片并转为 base64 data URL（用于参考图）"""
-        headers = {
-            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                           "AppleWebKit/537.36 (KHTML, like Gecko) "
-                           "Chrome/120.0.0.0 Safari/537.36"),
-        }
-        proxy = settings.get_proxy_for("serper")  # 搜图 URL 也在墙外，走同样的代理
-        try:
-            async with httpx.AsyncClient(proxy=proxy,
-                                         timeout=settings.download_timeout) as client:
-                resp = await client.get(url, headers=headers)
-                resp.raise_for_status()
-                img_data = base64.b64encode(resp.content).decode()
-                ext = url.rsplit(".", 1)[-1].lower() if "." in url else "jpeg"
-                mime = "jpeg" if ext in ("jpg", "jpeg") else "png"
-                return f"data:image/{mime};base64,{img_data}"
-        except Exception:
-            return None
-
-    @staticmethod
     def encode_reference_image(data: bytes, source_url: str) -> str:
         """把已下载的参考图字节编码成生图接口需要的 data URL。"""
         ext = source_url.rsplit(".", 1)[-1].split("?", 1)[0].lower() if "." in source_url else "jpeg"

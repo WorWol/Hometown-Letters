@@ -4,7 +4,6 @@
    ================================================================ */
 
 let _discoverItems = [];
-let _discLoading = false;
 let _discRequest = 0;
 
 function renderDiscover() {
@@ -36,7 +35,6 @@ function renderDiscover() {
 }
 
 async function _loadDiscoverFeed(requestId = _discRequest) {
-  _discLoading = true;
   const listEl = document.getElementById('discover-list');
   try {
     const r = await api.getCommunityFeed(12);
@@ -47,7 +45,6 @@ async function _loadDiscoverFeed(requestId = _discRequest) {
   } catch (e) {
     if (requestId === _discRequest && listEl) listEl.innerHTML = '<div class="visual-empty"><div><p>网络不好，再试一次吧。</p><button class="btn btn-sec" onclick="renderDiscover()">再试一次</button></div></div>';
   } finally {
-    _discLoading = false;
   }
 }
 

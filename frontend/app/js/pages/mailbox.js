@@ -229,7 +229,7 @@ function _deleteMailConfirm(mailId) {
   overlay.innerHTML = `
     <div class="modal-pnl paper-panel" style="max-width:360px;">
       <div class="modal-hd"><div><h3>丢掉这封信？</h3></div></div>
-      <div class="modal-bd" style="text-align:center;padding:16px;"><p style="color:var(--dk-muted);">丢掉之后，它不会在你这边留下了。</p></div>
+      <div class="modal-bd" style="text-align:center;padding:16px;"><p style="color:var(--ink-faint);">丢掉之后，它不会在你这边留下了。</p></div>
       <div class="modal-ft" style="display:flex;gap:8px;justify-content:center;">
         <button class="btn btn-dng" onclick="_doDeleteMail('${mailId}')">丢掉</button>
         <button class="btn btn-sec" onclick="this.closest('.modal').remove()">再留一会儿</button>
@@ -309,7 +309,7 @@ async function _searchRecipient(query) {
     try {
       const r = await api.lookupUsers(query.trim());
       if (!r.ok || !r.data || !r.data.users?.length) {
-        drop.innerHTML = '<div class="mailbox-search-item" style="color:var(--dk-muted);">没有找到这个用户</div>';
+        drop.innerHTML = '<div class="mailbox-search-item" style="color:var(--ink-faint);">没有找到这个用户</div>';
         drop.style.display = 'block';
         return;
       }

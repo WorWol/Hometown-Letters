@@ -9,7 +9,6 @@ import psutil
 
 
 _process = psutil.Process(os.getpid())
-_last_cpu = None
 
 
 def _read_int(path: str) -> int | None:
@@ -35,11 +34,9 @@ def _container_memory() -> dict:
     }
 
 def snapshot() -> dict:
-    global _last_cpu
     virtual = psutil.virtual_memory()
     process = _process.memory_info()
     cpu = psutil.cpu_percent(interval=None)
-    _last_cpu = cpu
     disk = psutil.disk_usage("/")
     container = _container_memory()
     return {

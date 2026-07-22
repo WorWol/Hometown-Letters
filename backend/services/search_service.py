@@ -1,7 +1,11 @@
 """Serper 图片搜索服务。"""
+import logging
+
 import httpx
 
 from config import settings
+
+logger = logging.getLogger("hometown")
 
 
 class SearchService:
@@ -35,5 +39,5 @@ class SearchService:
                 return resp.json()
         except (httpx.ConnectError, httpx.TimeoutException,
                 httpx.RemoteProtocolError, httpx.HTTPStatusError) as e:
-            print(f"[SearchService] 搜索失败: {type(e).__name__}: {str(e)[:80]}")
+            logger.warning("[SearchService] 搜索失败: %s: %s", type(e).__name__, str(e)[:80])
             return {}

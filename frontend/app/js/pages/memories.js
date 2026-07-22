@@ -38,7 +38,7 @@ function showMemDetail(m) {
   o.innerHTML = `<div class="modal-pnl"><div class="modal-hd"><h3>这段记忆</h3><button class="modal-cl" onclick="this.closest('.modal').remove()">x</button></div>
     <div class="modal-meta">${m.timestamp?new Date(m.timestamp).toLocaleString('zh-CN'):''}${m.analysisStatus?' · '+_as(m.analysisStatus):''}</div>
     <div class="modal-bd">${App._e(m.text)}</div>
-    ${m.summary?`<div class="modal-poem" style="font-style:normal;color:var(--dk-sec);">${App._e(m.summary)}</div>`:''}
+    ${m.summary?`<div class="modal-poem" style="font-style:normal;color:var(--ink-soft);">${App._e(m.summary)}</div>`:''}
     ${m.tags&&m.tags.length>0?`<div class="modal-tags">${m.tags.map(t=>`<span class="tag">${App._e(t)}</span>`).join('')}</div>`:''}
     <div class="modal-ft"><button class="btn btn-sec" onclick="this.closest('.modal').remove()">关闭</button></div></div>`;
   document.body.appendChild(o);
@@ -50,11 +50,11 @@ function showMemForm() {
   o.onclick=e=>{if(e.target===o)o.remove();};
   o.innerHTML = `<div class="modal-pnl"><div class="modal-hd"><h3>记下一件小事</h3><button class="modal-cl" onclick="this.closest('.modal').remove()">x</button></div>
     <div style="padding:14px 24px 20px;">
-      <div class="fg" style="margin-bottom:12px;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--dk-sec);">什么小事？</label>
+      <div class="fg" style="margin-bottom:12px;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--ink-soft);">什么小事？</label>
         <textarea class="inp inp-ta" id="mem-text" rows="4" placeholder="今天想起了什么？某个地方、某种气味、某个瞬间……"></textarea></div>
       <div style="display:flex;gap:12px;">
-        <div class="fg" style="flex:1;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--dk-sec);">标签（逗号分隔）</label><input class="inp" id="mem-tags" placeholder="如：家、学校、夏天"></div>
-        <div class="fg" style="flex:1;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--dk-sec);">地点（可选）</label><input class="inp" id="mem-place" placeholder="如：秀流公园"></div>
+        <div class="fg" style="flex:1;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--ink-soft);">标签（逗号分隔）</label><input class="inp" id="mem-tags" placeholder="如：家、学校、夏天"></div>
+        <div class="fg" style="flex:1;"><label style="display:block;font-size:13.5px;margin-bottom:5px;color:var(--ink-soft);">地点（可选）</label><input class="inp" id="mem-place" placeholder="如：秀流公园"></div>
       </div>
       <button class="btn btn-pri" onclick="saveMem()" id="mem-btn" style="margin-top:14px;">保存这段记忆</button>
       <div class="st" id="mem-status">&nbsp;</div>

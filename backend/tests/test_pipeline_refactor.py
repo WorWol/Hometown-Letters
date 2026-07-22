@@ -237,7 +237,7 @@ def test_poem_service():
     ps = PoemService(None)
 
     # 验证所有方法都接受 analysis 参数
-    for method_name in ["generate_poem", "generate_title", "generate_body", "generate_image_prompt"]:
+    for method_name in ["generate_poem", "generate_title", "generate_body"]:
         method = getattr(ps, method_name)
         sig = inspect.signature(method)
         assert "analysis" in sig.parameters, f"{method_name} 缺少 analysis 参数"

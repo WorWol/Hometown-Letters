@@ -21,7 +21,7 @@ async def get_current_developer(
     try:
         payload = decode_token(credentials.credentials)
         user_id = int(payload.get("sub", 0))
-    except Exception as error:
+    except Exception:
         return None
     user = await db.get(User, user_id)
     if user is None or not user.is_developer:

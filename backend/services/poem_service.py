@@ -1,4 +1,4 @@
-"""诗歌生成服务 — 为明信片作诗
+"""诗歌生成服务 - 为明信片作诗
 
 职责：
 1. 根据地点和搜索结果生成短诗
@@ -82,74 +82,3 @@ class PoemService:
                 f"请用符合这个性格的语气来写正文。"
             )
         return self.llm.chat(get_prompt("body"), msg, temperature=0.8, max_tokens=150)
-
-    def generate_image_prompt(
-        self,
-        place_context: dict,
-        scene_context: str = "",
-        analysis: dict | None = None,
-    ) -> str:
-        """生成英文图像提示词（信件内容驱动，像素风）
-
-        输入地点上下文和信件分析结果。
-        提示词描述的是信件中表达的场景，而不仅是地标本身。
-        """
-        place = place_context.get("name", "故乡")
-
-        if analysis and (analysis.get("visual_themes") or analysis.get("atmosphere")):
-            # ── 信件驱动模式 ──
-            visual_themes = analysis.get("visual_themes", [])
-            emotional_tone = analysis.get("emotional_tone", "")
-            atmosphere = analysis.get("atmosphere", "")
-
-            scene_desc = (
-                f"Place: {place}\n"
-                f"Visual elements from the letter: {'、'.join(visual_themes)}\n"
-                f"Emotional tone: {emotional_tone}\n"
-                f"Atmosphere guidance: {atmosphere}\n\n"
-                f"Based on the above, write a detailed English image generation prompt "
-                f"(50-80 words) for a RETRO 16-BIT PIXEL ART scene. "
-                f"The image should capture the EXACT scene and emotion described in the letter "
-                f"— not just the place itself, but the specific visual elements and mood "
-                f"the letter conveys.\n"
-            )
-        else:
-            # ── 旧模式回退 ──
-            desc = place_context.get("description", "")
-            scene_type = place_context.get("scene_type", "other")
-            style_map = {
-                "lakeside_dam": "waterside scene, gentle lake breeze, warm afternoon light",
-                "bridge_roadside": "old stone bridge, soft wind, dappled sunlight through trees",
-                "school_gate": "afternoon school gate, nostalgic warm golden light",
-                "street_food": "lively street, warm lantern light, steam rising from food stalls",
-                "path_to_pond": "shaded path, cool water reflections, dappled light, quiet mood",
-                "park": "peaceful park, morning light, people exercising under trees, birds",
-                "market": "busy market, colorful stalls, morning sunlight through awnings",
-                "temple": "ancient temple, incense smoke curling, quiet sunlit courtyard",
-            }
-            style = style_map.get(scene_type, "peaceful hometown scene, warm nostalgic atmosphere")
-            scene_desc = (
-                f"Scene: {place}\n"
-                f"Description: {desc}\n"
-                f"Style/atmosphere: {style}\n"
-                f"Extra: {scene_context[:80] if scene_context else 'A warm summer day'}\n\n"
-                f"Write a detailed English image generation prompt (50-80 words) for "
-                f"a RETRO 16-BIT PIXEL ART scene.\n"
-            )
-
-        msg = (
-            scene_desc
-            + f"Key requirements:\n"
-            f"- Must be pixel art with visible pixel grid and crisp blocky edges\n"
-            f"- Flat 2D shading, limited color palette, warm nostalgic colors\n"
-            f"- SNES/GBA-era game screenshot aesthetic\n"
-            f"- NO photorealism, NO smooth gradients, NO 3D rendering, NO painterly brush strokes\n"
-            f"- Include specific visual details: lighting, atmosphere, composition"
-        )
-
-        return self.llm.chat(
-            get_prompt("image_prompt"),
-            msg,
-            temperature=0.7,
-            max_tokens=200,
-        )

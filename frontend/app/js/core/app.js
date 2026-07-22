@@ -93,14 +93,6 @@ const App = {
     return response;
   },
 
-  navigate(page) {
-    document.querySelectorAll('#app .page').forEach(node => node.classList.remove('active'));
-    document.getElementById(`page-${page}`)?.classList.add('active');
-    this.currentPage = page;
-    const fn = `render${page.split('_').map(part => part[0].toUpperCase() + part.slice(1)).join('')}`;
-    if (typeof window[fn] === 'function') window[fn]();
-  },
-
   showToast(message, duration = 2500) {
     const container = document.getElementById('toast-container');
     if (!container) return;

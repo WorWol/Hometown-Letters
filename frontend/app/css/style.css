@@ -533,7 +533,7 @@ textarea { resize: vertical; }
 .image-lightbox { cursor: zoom-out; }
 .image-lightbox .lightbox-media { width: min(1100px, 94vw); height: min(82dvh, 780px); background: #f7ead0; border: 8px solid var(--wood); box-shadow: var(--shadow); pointer-events: none; }
 .lightbox-close { position: fixed; z-index: 1; top: max(18px, env(safe-area-inset-top)); right: max(18px, env(safe-area-inset-right)); width: 44px; height: 44px; padding: 0; color: #fff4da; background: rgba(65,31,20,.88); border: 2px solid rgba(255,244,218,.78); border-radius: 50%; font: 30px/36px Georgia, serif; cursor: pointer; }
-.lightbox-close:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.lightbox-close:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
 .env-overlay #env-envelope-large { width: min(760px, 92vw); aspect-ratio: 1.37; }
 .toast-c { position: fixed; z-index: 1300; right: 24px; bottom: 24px; display: grid; gap: 8px; pointer-events: none; }.toast { max-width: min(380px, calc(100vw - 32px)); padding: 13px 18px; color: #fff1cf; background: rgba(54,32,20,.96); border: 2px solid #c1894f; box-shadow: 4px 5px 0 rgba(0,0,0,.3); font-size: 13px; animation: toastIn .22s ease; }.toast.leaving { opacity: 0; transform: translateY(8px); transition: .24s ease; }
 
