@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>开发者工作台 · 故乡来信</title>
-  <link rel="stylesheet" href="admin/admin.css?v=white-console-1">
+  <link rel="stylesheet" href="admin.css?v=20260722-styles">
 </head>
 <body>
 <div class="console-shell">
@@ -13,15 +13,25 @@
       <span class="mark-glyph">H</span>
       <span><strong>故乡来信</strong><small>Developer workspace</small></span>
     </a>
-    <div class="sidebar-label">工作区</div>
     <nav class="side-nav" aria-label="开发者后台导航">
+      <div class="sidebar-label">总览</div>
       <button class="active" data-view="overview"><span class="nav-icon">⌂</span>概览</button>
+
+      <div class="sidebar-label">内容管理</div>
+      <button data-view="postcards"><span class="nav-icon">▧</span>明信片管理</button>
+
+      <div class="sidebar-label">生成配置</div>
+      <button data-view="styles"><span class="nav-icon">✦</span>图像风格</button>
+      <button data-view="prompts"><span class="nav-icon">✎</span>提示词</button>
+
+      <div class="sidebar-label">运维监控</div>
       <button data-view="metrics"><span class="nav-icon">⌁</span>API 监控</button>
       <button data-view="runtime"><span class="nav-icon">◫</span>服务器资源</button>
-      <button data-view="postcards"><span class="nav-icon">▧</span>明信片管理</button>
+      <button data-view="events"><span class="nav-icon">≡</span>事件与日志</button>
+
+      <div class="sidebar-label">数据与存储</div>
       <button data-view="database"><span class="nav-icon">◉</span>数据库</button>
       <button data-view="storage"><span class="nav-icon">◌</span>OSS 检查</button>
-      <button data-view="events"><span class="nav-icon">≡</span>事件与日志</button>
     </nav>
     <div class="sidebar-bottom">
       <div class="environment"><span class="status-dot"></span><span><strong>生产环境</strong><small>服务运行正常</small></span></div>
@@ -51,9 +61,11 @@
     <section class="view" id="view-database"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">DATA</span><h2>数据库</h2></div><div class="db-toolbar"><select id="db-table"></select><input id="db-query" placeholder="搜索当前表"><button class="primary" data-action="load-database">查询</button><button class="secondary" data-action="create-row">新增</button></div></div><p class="muted" id="db-summary">选择一张表查看数据。敏感字段和系统事件只读。</p><div class="table-wrap"><table><thead id="database-head"></thead><tbody id="database-table"></tbody></table></div><div class="pagination"><span class="muted" id="db-page"></span><div><button class="secondary" id="db-prev">上一页</button><button class="secondary" id="db-next">下一页</button></div></div></div></section>
     <section class="view" id="view-storage"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">STORAGE</span><h2>数据库 / OSS 一致性</h2></div><button class="primary" data-action="load-storage">开始检查</button></div><p class="muted">检查每条明信片的参考图和三个生成图片对象。</p><div class="table-wrap"><table><thead><tr><th>明信片 ID</th><th>参考图</th><th>thumb</th><th>card</th><th>original</th><th>结果</th></tr></thead><tbody id="storage-table"></tbody></table></div></div><div class="panel"><div class="panel-head"><div><span class="panel-kicker">QUEUE</span><h2>OSS 删除任务</h2></div><div><button class="secondary" data-action="retry-storage-tasks">立即重试</button> <button class="secondary" data-action="load-storage-tasks">刷新</button></div></div><p class="muted">OSS 暂时不可用时，数据库会保留待重试任务。</p><div class="table-wrap"><table><thead><tr><th>ID</th><th>对象</th><th>状态</th><th>尝试次数</th><th>错误</th><th>更新时间</th></tr></thead><tbody id="storage-tasks-table"></tbody></table></div></div></section>
     <section class="view" id="view-events"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">AUDIT LOG</span><h2>系统事件</h2></div><button class="secondary" data-action="load-events">刷新</button></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>级别</th><th>类型</th><th>消息</th><th>用户</th></tr></thead><tbody id="events-table"></tbody></table></div></div><div class="panel"><div class="panel-head"><div><span class="panel-kicker">APPLICATION</span><h2>应用日志</h2></div><button class="secondary" data-action="load-logs">刷新</button></div><pre id="logs">尚未连接</pre></div></section>
+    <section class="view" id="view-styles"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">GENERATION</span><h2>图像风格</h2></div><button class="primary" data-action="create-style">新增风格</button></div><p class="muted">管理图像生成风格。内置风格不可删除、可下架；修改后立即生效，无需重启。</p><div class="table-wrap"><table><thead><tr><th>标识</th><th>名称</th><th>分析提示</th><th>排序</th><th>状态</th><th>类型</th><th>操作</th></tr></thead><tbody id="styles-table"></tbody></table></div></div></section>
+    <section class="view" id="view-prompts"><div class="panel"><div class="panel-head"><div><span class="panel-kicker">GENERATION</span><h2>提示词</h2></div><button class="secondary" data-action="refresh-prompts">刷新</button></div><p class="muted">覆盖各环节 LLM 提示词；重置则恢复默认。修改后立即生效。</p><div class="table-wrap"><table><thead><tr><th>键</th><th>名称</th><th>说明</th><th>状态</th><th>操作</th></tr></thead><tbody id="prompts-table"></tbody></table></div></div></section>
   </main>
 </div>
 <div id="modal-root"></div>
-<script src="admin/admin.js?v=20260720-api-fix"></script>
+<script src="admin.js?v=20260722-styles"></script>
 </body>
 </html>

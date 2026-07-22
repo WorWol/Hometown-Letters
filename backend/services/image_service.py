@@ -71,10 +71,16 @@ class ImageService:
 
     async def generate(self, prompt: str,
                        size: str = "2K",
-                       reference_images: list[str] | None = None
+                       reference_images: list[str] | None = None,
+                       style: str | None = None,
                        ) -> dict[str, Any]:
-        """生成图像，主模型失败自动切换备用模型"""
-        styled_prompt = f"{prompt}. Style: {settings.image_gen_style}"
+        """生成图像，主模型失败自动切换备用模型。
+
+        style: 风格描述文本（来自 style_service.get_style_prompt）。
+               为 None 时回退到全局 settings.image_gen_style。
+        """
+        style_text = style or settings.image_gen_style
+        styled_prompt = f"{prompt}. Style: {style_text}"
         if self.client:
             result = await self._generate_sdk(styled_prompt, size, reference_images)
             if result.get("ok"):

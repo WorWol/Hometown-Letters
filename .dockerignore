@@ -21,6 +21,9 @@ backend/logs/*.log.*
 # 生成的图片缓存（由 volume 管理）
 backend/generated_images/
 
+# 风格测试输出（本地调试产物，不应进镜像）
+backend/style_test_output/
+
 # Git
 .git/
 .gitignore

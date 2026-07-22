@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Letter, LetterMemory, LetterSummary, PastSelfProfile
+from services.prompt_service import get_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -16,60 +17,6 @@ BATCH_SIZE = 5
 MAX_CONTEXT_SUMMARIES = 3
 MAX_CONTEXT_MEMORIES = 3
 MAX_CONTEXT_LETTERS = 5
-
-SYSTEM_BATCH_MEMORY = """你是一位擅长阅读连续书信的记忆整理者。
-
-下面是同一个用户按时间顺序写下的 5 封信。请基于这 5 封信，产出两层结果：
-
-1. summary_text
-- 用 100-180 字中文总结这一阶段用户在想什么、反复提什么、情绪怎样变化
-- 聚焦这一阶段，不要上升成终身人格
-
-2. memory
-- memory_overview：50-120 字中文，总结这一批记忆的核心线索
-- emotion_signals：这一批里反复出现的情绪，每项 {"name": "..."}
-- place_signals：这一批反复出现的地点/空间，每项 {"name": "..."}
-- theme_signals：这一批反复出现的主题，每项 {"name": "..."}
-- people_signals：这一批提到的人物/关系线索，每项 {"name": "..."}
-- sensory_signals：这一批明显出现的感官线索，每项 {"name": "..."}
-
-注意：
-- 只能根据提供的 5 封信归纳，不能编造
-- 没把握时返回空数组
-- 输出纯 JSON，不要 markdown，不要解释
-
-输出格式：
-{
-  "summary_text": "...",
-  "memory": {
-    "memory_overview": "...",
-    "emotion_signals": [{"name": "..."}],
-    "place_signals": [{"name": "..."}],
-    "theme_signals": [{"name": "..."}],
-    "people_signals": [{"name": "..."}],
-    "sensory_signals": [{"name": "..."}]
-  }
-}
-"""
-
-SYSTEM_PROFILE = """你是一位敏锐的心理观察者，善于从阶段性书信总结中识别一个人的长期性格与记忆倾向。
-
-下面提供的是同一个用户若干个“5封信阶段总结”和“阶段记忆信号”。
-请据此更新这个人的长期画像。
-
-任务：
-1. summary：100-200 字中文长期画像。格式："这是一个……的人。他/她……"
-2. latent_place_affinities：长期反复出现的地点倾向，每项 {"name": "..."}
-3. sensory_biases：长期明显的感官偏好，每项 {"name": "..."}
-4. identity_signals：长期人格/身份特质，每项 {"name": "..."}
-5. recent_memory_signals：最近阶段里最明显的记忆趋势，每项 {"name": "..."}
-
-要求：
-- 依据阶段总结归纳，不要编造
-- recent_memory_signals 要更偏向最近阶段，而不是所有历史平均
-- 输出纯 JSON，不要解释
-"""
-
 
 class MemoryService:
     async def load_user_context(
@@ -150,7 +97,7 @@ class MemoryService:
         payload = self._build_batch_payload(letters)
         try:
             raw = llm.chat(
-                SYSTEM_BATCH_MEMORY,
+                get_prompt("batch_memory"),
                 payload,
                 temperature=0.4,
                 max_tokens=900,
@@ -229,7 +176,7 @@ class MemoryService:
 
         try:
             raw = llm.chat(
-                SYSTEM_PROFILE,
+                get_prompt("profile"),
                 "\n".join(parts),
                 temperature=0.4,
                 max_tokens=700,

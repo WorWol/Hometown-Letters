@@ -10,7 +10,7 @@
 
   const developerUsername = localStorage.getItem('hometown_developer_username') || '';
   if (!token) {
-    window.location.replace('/admin-login.html');
+    window.location.replace('/admin/admin-login.html');
     return;
   }
   $('account-name').textContent = developerUsername || 'Developer';
@@ -63,10 +63,64 @@
   }
   async function deletePostcard(id) { if (!confirm('确定删除这张明信片以及 OSS 中的图片吗？此操作不可恢复。')) return; await request(`/api/admin/postcards/${id}`, {method: 'DELETE'}); status(`明信片 #${id} 已删除`, 'ok'); loadPostcards(); }
   async function loadStorageTasks() { const data = await request('/api/admin/storage/tasks?status=pending'); $('storage-tasks-table').innerHTML = data.length ? data.map((row) => `<tr><td>${row.id}</td><td>${esc(`${row.entityType} #${row.entityId}`)}</td><td><span class="badge ${row.status === 'completed' ? 'good' : row.status === 'failed' ? 'bad' : ''}">${esc(row.status)}</span></td><td>${row.attempts}</td><td>${esc(row.lastError || '—')}</td><td>${esc(new Date(row.updatedAt).toLocaleString())}</td></tr>`).join('') : '<tr><td colspan="6" class="muted">暂无待处理任务</td></tr>'; }
-  async function loadStorage() { const data = await request('/api/admin/storage/check'); $('storage-table').innerHTML = data.items.length ? data.items.map((row) => `<tr><td>${row.postcardId}</td>${['reference','thumb','card','original'].map((key) => `<td><span class="badge ${row.present[key] ? 'good' : row.keys?.[key] ? 'bad' : ''}">${row.present[key] ? '存在' : row.keys?.[key] ? '缺失' : '未记录'}</span></td>`).join('')}<td><span class="badge ${row.complete ? 'good' : 'bad'}">${row.complete ? '一致' : '需处理'}</span></td></tr>`).join('') : '<tr><td colspan="6" class="muted">暂无数据</td></tr>'; await loadStorageTasks(); }
+  async function loadStorage() {
+    const data = await request('/api/admin/storage/check');
+    const cell = (row, key) => {
+      if (!row.keys?.[key]) return '<td><span class="badge">未记录</span></td>';
+      const p = row.present?.[key];
+      const cls = p === true ? 'good' : p === false ? 'bad' : 'warn';
+      const text = p === true ? '存在' : p === false ? '缺失' : '失败';
+      return `<td><span class="badge ${cls}">${text}</span></td>`;
+    };
+    const summary = (c) => c === true ? '<span class="badge good">一致</span>' : c === false ? '<span class="badge bad">不一致</span>' : '<span class="badge warn">无法判定</span>';
+    $('storage-table').innerHTML = data.items.length ? data.items.map((row) => `<tr><td>${row.postcardId}</td>${['reference','thumb','card','original'].map((key) => cell(row, key)).join('')}<td>${summary(row.complete)}</td></tr>`).join('') : '<tr><td colspan="6" class="muted">暂无数据</td></tr>';
+    await loadStorageTasks();
+  }
   async function retryStorageTasks() { const data = await request('/api/admin/storage/tasks/retry', {method: 'POST'}); status(`已完成 ${data.completed} 个 OSS 删除任务`, 'ok'); await loadStorageTasks(); }
   async function loadEvents() { const data = await request('/api/admin/events?limit=300'); $('events-table').innerHTML = data.length ? data.map((row) => `<tr><td>${esc(new Date(row.createdAt).toLocaleString())}</td><td><span class="badge ${row.level === 'error' || row.level === 'warning' ? 'bad' : ''}">${esc(row.level)}</span></td><td>${esc(row.eventType)}</td><td>${esc(row.message)}</td><td>${esc(row.userId || '-')}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">暂无事件</td></tr>'; }
   async function loadLogs() { const data = await request('/api/admin/logs?limit=300'); $('logs').textContent = data.lines.length ? data.lines.join('\n') : '暂无日志'; }
+
+  async function loadStyles() {
+    const data = await request('/api/admin/styles');
+    $('styles-table').innerHTML = data.length ? data.map((row) => `<tr><td><code>${esc(row.styleId)}</code></td><td>${esc(row.label)}</td><td><code>${esc(row.analysisHint || '-')}</code></td><td>${row.sortOrder}</td><td><span class="badge ${row.isActive ? 'good' : 'bad'}">${row.isActive ? '启用' : '下架'}</span></td><td>${row.isSystem ? '<span class="badge">内置</span>' : '<span class="badge">自定义</span>'}</td><td><button class="secondary" data-action="edit-style" data-id="${esc(row.styleId)}">编辑</button> <button class="secondary" data-action="toggle-style" data-id="${esc(row.styleId)}" data-active="${row.isActive}">${row.isActive ? '下架' : '启用'}</button>${row.isSystem ? '' : ` <button class="danger" data-action="delete-style" data-id="${esc(row.styleId)}">删除</button>`}</td></tr>`).join('') : '<tr><td colspan="7" class="muted">暂无风格</td></tr>';
+  }
+  function styleForm(row) {
+    const creating = !row.styleId;
+    return `<div class="modal"><form class="modal-card" id="style-form"><div class="modal-head"><h2>${creating ? '新增' : '编辑'}图像风格</h2><button type="button" class="close" data-action="close-modal">×</button></div><div class="form-grid"><label>风格标识（英文，唯一）<input name="style_id" value="${esc(row.styleId || '')}" ${creating ? 'required placeholder="如 cyberpunk"' : 'readonly'}></label><label>显示名称<input name="label" value="${esc(row.label || '')}" required></label><label class="full">风格提示词（追加到生图 prompt 末尾）<textarea name="style_prompt" required>${esc(row.stylePrompt || '')}</textarea></label><label class="full">分析提示（注入信件分析的 {STYLE_HINT}）<textarea name="analysis_hint">${esc(row.analysisHint || '')}</textarea></label><label>排序<input name="sort_order" type="number" value="${row.sortOrder ?? 0}"></label></div><div class="modal-actions"><button type="button" class="secondary" data-action="close-modal">取消</button><button class="primary">保存</button></div></form></div>`;
+  }
+  async function createStyle() { $('modal-root').innerHTML = styleForm({}); bindStyleForm(null); }
+  async function editStyle(styleId) { const data = await request('/api/admin/styles'); const row = data.find((s) => s.styleId === styleId); if (!row) return status('风格不存在', 'error'); $('modal-root').innerHTML = styleForm(row); bindStyleForm(styleId); }
+  function bindStyleForm(styleId) {
+    $('style-form').onsubmit = async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      const body = {label: form.get('label'), style_prompt: form.get('style_prompt'), analysis_hint: form.get('analysis_hint') || '', sort_order: Number(form.get('sort_order') || 0)};
+      if (styleId) {
+        await request(`/api/admin/styles/${encodeURIComponent(styleId)}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        status('风格已更新', 'ok');
+      } else {
+        body.style_id = form.get('style_id');
+        await request('/api/admin/styles', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+        status('风格已新增', 'ok');
+      }
+      closeModal(); loadStyles();
+    };
+  }
+  async function deleteStyle(styleId) { if (!confirm('确定删除这个自定义风格吗？已设置该风格的用户将回退到默认风格。')) return; await request(`/api/admin/styles/${encodeURIComponent(styleId)}`, {method: 'DELETE'}); status('风格已删除', 'ok'); loadStyles(); }
+  async function toggleStyle(styleId, active) { await request(`/api/admin/styles/${encodeURIComponent(styleId)}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({is_active: !active})}); status(active ? '风格已下架' : '风格已启用', 'ok'); loadStyles(); }
+
+  async function loadPrompts() {
+    const data = await request('/api/admin/prompts');
+    $('prompts-table').innerHTML = data.length ? data.map((row) => `<tr><td><code>${esc(row.key)}</code></td><td>${esc(row.label)}</td><td>${esc(row.description || '')}</td><td><span class="badge ${row.overridden ? 'good' : ''}">${row.overridden ? '已覆盖' : '默认'}</span></td><td><button class="secondary" data-action="edit-prompt" data-key="${esc(row.key)}">编辑</button>${row.overridden ? ` <button class="danger" data-action="reset-prompt" data-key="${esc(row.key)}">重置</button>` : ''}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">暂无提示词</td></tr>';
+  }
+  async function editPrompt(key) {
+    const data = await request('/api/admin/prompts');
+    const row = data.find((p) => p.key === key);
+    if (!row) return status('提示词不存在', 'error');
+    $('modal-root').innerHTML = `<div class="modal"><form class="modal-card" id="prompt-form"><div class="modal-head"><h2>编辑提示词 · ${esc(row.label)}</h2><button type="button" class="close" data-action="close-modal">×</button></div><p class="muted">${esc(row.description || '')}</p><details style="margin:10px 0"><summary class="muted">查看默认值</summary><pre>${esc(row.defaultContent)}</pre></details><label class="full" style="margin-top:13px">覆盖内容<textarea name="content" class="json-field" required>${esc(row.content)}</textarea></label><div class="modal-actions"><button type="button" class="secondary" data-action="close-modal">取消</button><button class="primary">保存</button></div></form></div>`;
+    $('prompt-form').onsubmit = async (event) => { event.preventDefault(); const form = new FormData(event.target); await request(`/api/admin/prompts/${encodeURIComponent(key)}`, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({content: form.get('content')})}); closeModal(); status('提示词已更新', 'ok'); loadPrompts(); };
+  }
+  async function resetPrompt(key) { if (!confirm('确定重置该提示词为默认值吗？')) return; await request(`/api/admin/prompts/${encodeURIComponent(key)}`, {method: 'DELETE'}); status('提示词已重置', 'ok'); loadPrompts(); }
 
   function inputFor(field, value, creating) { const current = value == null ? '' : value; if (field.name === 'password') return `<input data-field="password" type="password" minlength="8" maxlength="72" placeholder="${creating ? '至少 8 个字符' : '留空表示不修改'}" ${creating ? 'required' : ''}>`; if (field.type === 'boolean') return `<input type="checkbox" data-field="${esc(field.name)}" ${current ? 'checked' : ''}>`; if (field.type === 'json') return `<textarea class="json-field" data-field="${esc(field.name)}">${esc(JSON.stringify(current || [], null, 2))}</textarea>`; return `<input data-field="${esc(field.name)}" type="${field.type === 'integer' ? 'number' : field.type === 'datetime' ? 'datetime-local' : 'text'}" value="${esc(field.type === 'datetime' && current ? String(current).slice(0, 16) : current)}">`; }
   function rowPayload(form) { const payload = {}; form.querySelectorAll('[data-field]').forEach((input) => { const name = input.dataset.field; if (input.type === 'checkbox') payload[name] = input.checked; else if (input.classList.contains('json-field')) payload[name] = JSON.parse(input.value || 'null'); else if (input.type === 'number') payload[name] = input.value === '' ? null : Number(input.value); else payload[name] = input.value; }); return payload; }
@@ -77,10 +131,10 @@
   async function editRow(table, id) { const row = await request(`/api/admin/data/${encodeURIComponent(table)}/${id}`); $('modal-root').innerHTML = rowForm(table, row, false); $('db-form').onsubmit = async (event) => { event.preventDefault(); await request(`/api/admin/data/${encodeURIComponent(table)}/${id}`, {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(rowPayload(event.target))}); closeModal(); status('数据已更新', 'ok'); loadDatabase(); }; }
   async function deleteRow(table, id) { if (!confirm(`确定删除 ${table} #${id} 吗？涉及 OSS 的明信片会同时清理图片。`)) return; await request(`/api/admin/data/${encodeURIComponent(table)}/${id}`, {method: 'DELETE'}); status('数据已删除', 'ok'); loadDatabase(); }
   function closeModal() { $('modal-root').innerHTML = ''; }
-  function switchView(name) { document.querySelectorAll('.view').forEach((node) => node.classList.toggle('active', node.id === `view-${name}`)); document.querySelectorAll('nav button').forEach((node) => node.classList.toggle('active', node.dataset.view === name)); $('page-title').textContent = {overview:'系统概览', metrics:'API 监控', runtime:'服务器资源', postcards:'明信片管理', database:'数据库', storage:'OSS 检查', events:'事件与日志'}[name]; const loaders = {overview: loadOverview, metrics: loadMetrics, runtime: loadRuntime, postcards: loadPostcards, database: loadDatabase, storage: loadStorage, events: () => Promise.all([loadEvents(), loadLogs()])}; if (loaders[name]) loaders[name]().catch((error) => status(error.message, 'error')); }
-  document.addEventListener('click', (event) => { const target = event.target.closest('[data-action],[data-view-target],nav button'); if (!target) return; if (target.dataset.viewTarget) return switchView(target.dataset.viewTarget); if (target.dataset.view) return switchView(target.dataset.view); const action = target.dataset.action; const actions = {'refresh-overview': loadOverview, 'refresh-metrics': loadMetrics, 'refresh-runtime': loadRuntime, 'search-postcards': loadPostcards, 'load-database': loadDatabase, 'create-row': createRow, 'load-storage': loadStorage, 'load-storage-tasks': loadStorageTasks, 'retry-storage-tasks': retryStorageTasks, 'load-events': loadEvents, 'load-logs': loadLogs, 'close-modal': closeModal, 'view-postcard': () => viewPostcard(target.dataset.id), 'edit-postcard': () => editPostcard(target.dataset.id), 'delete-postcard': () => deletePostcard(target.dataset.id), 'edit-row': () => editRow(target.dataset.table, target.dataset.id), 'delete-row': () => deleteRow(target.dataset.table, target.dataset.id)}; if (actions[action]) actions[action]().catch((error) => status(error.message, 'error')); });
+  function switchView(name) { document.querySelectorAll('.view').forEach((node) => node.classList.toggle('active', node.id === `view-${name}`)); document.querySelectorAll('nav button').forEach((node) => node.classList.toggle('active', node.dataset.view === name)); $('page-title').textContent = {overview:'系统概览', metrics:'API 监控', runtime:'服务器资源', postcards:'明信片管理', styles:'图像风格', prompts:'提示词', database:'数据库', storage:'OSS 检查', events:'事件与日志'}[name]; const loaders = {overview: loadOverview, metrics: loadMetrics, runtime: loadRuntime, postcards: loadPostcards, styles: loadStyles, prompts: loadPrompts, database: loadDatabase, storage: loadStorage, events: () => Promise.all([loadEvents(), loadLogs()])}; if (loaders[name]) loaders[name]().catch((error) => status(error.message, 'error')); }
+  document.addEventListener('click', (event) => { const target = event.target.closest('[data-action],[data-view-target],nav button'); if (!target) return; if (target.dataset.viewTarget) return switchView(target.dataset.viewTarget); if (target.dataset.view) return switchView(target.dataset.view); const action = target.dataset.action; const actions = {'refresh-overview': loadOverview, 'refresh-metrics': loadMetrics, 'refresh-runtime': loadRuntime, 'search-postcards': loadPostcards, 'load-database': loadDatabase, 'create-row': createRow, 'load-storage': loadStorage, 'load-storage-tasks': loadStorageTasks, 'retry-storage-tasks': retryStorageTasks, 'load-events': loadEvents, 'load-logs': loadLogs, 'close-modal': closeModal, 'view-postcard': () => viewPostcard(target.dataset.id), 'edit-postcard': () => editPostcard(target.dataset.id), 'delete-postcard': () => deletePostcard(target.dataset.id), 'edit-row': () => editRow(target.dataset.table, target.dataset.id), 'delete-row': () => deleteRow(target.dataset.table, target.dataset.id), 'create-style': createStyle, 'edit-style': () => editStyle(target.dataset.id), 'delete-style': () => deleteStyle(target.dataset.id), 'toggle-style': () => toggleStyle(target.dataset.id, target.dataset.active === 'true'), 'refresh-prompts': loadPrompts, 'edit-prompt': () => editPrompt(target.dataset.key), 'reset-prompt': () => resetPrompt(target.dataset.key)}; if (actions[action]) actions[action]().catch((error) => status(error.message, 'error')); });
   $('db-prev').onclick = () => { offset = Math.max(0, offset - limit); loadDatabase().catch((error) => status(error.message, 'error')); };
   $('db-next').onclick = () => { offset += limit; loadDatabase().catch((error) => status(error.message, 'error')); };
-  document.querySelector('[data-action="developer-logout"]').onclick = () => { token = ''; localStorage.removeItem('hometown_developer_token'); window.location.replace('/admin-login.html'); };
-  loadOverview().catch((error) => { if (error.message.includes('认证失败')) window.location.replace('/admin-login.html'); else status(error.message, 'error'); });
+  document.querySelector('[data-action="developer-logout"]').onclick = () => { token = ''; localStorage.removeItem('hometown_developer_token'); window.location.replace('/admin/admin-login.html'); };
+  loadOverview().catch((error) => { if (error.message.includes('认证失败')) window.location.replace('/admin/admin-login.html'); else status(error.message, 'error'); });
 })();

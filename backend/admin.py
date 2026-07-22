@@ -1,6 +1,8 @@
 """开发者后台 API。所有接口统一使用开发者账号 Bearer Token。"""
 from __future__ import annotations
 
+import asyncio
+import logging
 import shutil
 import time
 from datetime import datetime, timezone
@@ -12,16 +14,21 @@ from sqlalchemy import func, select, text
 
 from config import settings
 from db.database import async_session
-from db.models import Letter, Postcard, StorageDeletionTask, SystemEvent, User
+from db.models import ImageStyle, Letter, Postcard, StorageDeletionTask, SystemEvent, User
 from logger import LOG_FILE
 import storage
 from services import persistent_metrics
 from services.runtime_metrics import snapshot as runtime_snapshot
 from services.data_service import delete_postcard as remove_postcard
 from auth.developer import require_current_developer
+from services import prompt_service
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 _started_at = time.time()
+logger = logging.getLogger("hometown")
+# OSS 一致性检查的并发上限：单张明信片内 4 个对象并发，再以此额度并发多张明信片。
+# 兼顾速度与避免压垮 OSS 触发 SSL 重置（实测并发 15 次单 key 稳定）。
+_OSS_CHECK_CONCURRENCY = 6
 
 
 def _read_log_tail(path: Path, limit: int) -> list[str]:
@@ -50,6 +57,10 @@ class PostcardPatch(BaseModel):
     tags: list[str] | None = None
     imagePrompt: str | None = None
     letterText: str | None = None
+
+class PromptUpdateReq(BaseModel):
+    """开发者修改提示词时的请求体。"""
+    content: str = Field(max_length=20000)
 
 
 def _postcard_dict(row: Postcard) -> dict:
@@ -85,11 +96,22 @@ def _postcard_image_urls(row: Postcard) -> dict[str, str]:
 
 
 async def _oss_key_status(keys: dict[str, str]) -> dict[str, bool | None]:
-    """检查明信片图片对象；OSS 请求放到线程，避免阻塞 FastAPI 事件循环。"""
-    return {
-        name: bool(key) and await storage.object_exists_async(key)
-        for name, key in keys.items()
-    }
+    """检查明信片图片对象是否存在于 OSS；请求放到线程避免阻塞事件循环。
+
+    返回值三态：True 存在 / False 不存在 / None 检查失败（网络异常等）。
+    单个对象检查失败只影响该对象，不会让整张明信片或整个请求失败。
+    """
+    async def check(name: str, key: str) -> tuple[str, bool | None]:
+        if not key:
+            return name, False
+        try:
+            return name, await storage.object_exists_async(key)
+        except Exception as exc:  # OSS 网络抖动（如 SSL EOF）不应击垮整个一致性检查
+            logger.warning("OSS object_exists failed for %s: %r", key, exc)
+            return name, None
+
+    pairs = await asyncio.gather(*(check(name, key) for name, key in keys.items()))
+    return dict(pairs)
 
 
 @router.get("/overview")
@@ -269,23 +291,35 @@ async def storage_check(
         query = select(Postcard).order_by(Postcard.id)
         if postcard_id is not None:
             query = query.where(Postcard.id == postcard_id)
-        rows = (await db.execute(query)).scalars().all()
-        items = []
-        for row in rows:
-            keys = {
-                "thumb": row.image_thumb_key,
-                "card": row.image_card_key,
-                "original": row.image_original_key,
-                "reference": row.reference_image_key,
-            }
+        rows = list((await db.execute(query)).scalars().all())
+
+    semaphore = asyncio.Semaphore(_OSS_CHECK_CONCURRENCY)
+
+    async def inspect(row: Postcard) -> dict:
+        keys = {
+            "thumb": row.image_thumb_key,
+            "card": row.image_card_key,
+            "original": row.image_original_key,
+            "reference": row.reference_image_key,
+        }
+        async with semaphore:
             present = await _oss_key_status(keys)
-            tracked = [name for name, key in keys.items() if key]
-            items.append({
-                "postcardId": row.id,
-                "keys": keys,
-                "present": present,
-                "complete": bool(tracked) and all(present[name] for name in tracked),
-            })
+        tracked = [name for name, key in keys.items() if key]
+        # complete 三态：True 全部存在 / False 有缺失 / None 无图或含检查失败（无法判定）
+        if not tracked:
+            complete = None
+        elif any(present[name] is None for name in tracked):
+            complete = None
+        else:
+            complete = all(present[name] for name in tracked)
+        return {
+            "postcardId": row.id,
+            "keys": keys,
+            "present": present,
+            "complete": complete,
+        }
+
+    items = list(await asyncio.gather(*(inspect(row) for row in rows)))
     return {"ok": True, "data": {"items": items, "checked": len(items)}}
 
 
@@ -385,3 +419,176 @@ async def health():
         "storage": "configured",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }}
+
+
+# ── 提示词管理 ──
+
+@router.get("/prompts")
+async def list_prompts(developer: User = Depends(require_current_developer)):
+    return {"ok": True, "data": await prompt_service.list_prompts()}
+
+
+@router.put("/prompts/{key}")
+async def update_prompt(
+    key: str,
+    body: PromptUpdateReq,
+    developer: User = Depends(require_current_developer),
+):
+    try:
+        await prompt_service.set_override(key, body.content, developer.username)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="未知提示词")
+    async with async_session() as db:
+        db.add(SystemEvent(
+            level="info",
+            event_type="admin_prompt_updated",
+            message="developer updated LLM prompt",
+            event_metadata={"actor": developer.username, "key": key},
+        ))
+        await db.commit()
+    return {"ok": True, "data": {"key": key, "overridden": True}}
+
+
+@router.delete("/prompts/{key}")
+async def reset_prompt(
+    key: str,
+    developer: User = Depends(require_current_developer),
+):
+    try:
+        await prompt_service.reset_override(key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="未知提示词")
+    async with async_session() as db:
+        db.add(SystemEvent(
+            level="info",
+            event_type="admin_prompt_reset",
+            message="developer reset LLM prompt to default",
+            event_metadata={"actor": developer.username, "key": key},
+        ))
+        await db.commit()
+    return {"ok": True, "data": {"key": key, "overridden": False}}
+
+
+# ── 图像风格管理 ──
+
+class StyleCreateReq(BaseModel):
+    style_id: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=64)
+    style_prompt: str = Field(max_length=2000)
+    analysis_hint: str = Field(default="", max_length=256)
+    sort_order: int = Field(default=0, ge=0)
+
+
+class StyleUpdateReq(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=64)
+    style_prompt: str | None = Field(default=None, max_length=2000)
+    analysis_hint: str | None = Field(default=None, max_length=256)
+    sort_order: int | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+
+
+def _style_dict(row: ImageStyle) -> dict:
+    return {
+        "id": row.id,
+        "styleId": row.style_id,
+        "label": row.label,
+        "stylePrompt": row.style_prompt,
+        "analysisHint": row.analysis_hint,
+        "sortOrder": row.sort_order,
+        "isActive": row.is_active,
+        "isSystem": row.is_system,
+        "updatedAt": row.updated_at.isoformat() if row.updated_at else "",
+    }
+
+
+@router.get("/styles")
+async def list_styles(developer: User = Depends(require_current_developer)):
+    async with async_session() as db:
+        rows = (await db.execute(select(ImageStyle).order_by(ImageStyle.sort_order.asc()))).scalars().all()
+    return {"ok": True, "data": [_style_dict(row) for row in rows]}
+
+
+@router.post("/styles")
+async def create_style(
+    body: StyleCreateReq,
+    developer: User = Depends(require_current_developer),
+):
+    from services import style_service
+    async with async_session() as db:
+        existing = await db.scalar(select(ImageStyle).where(ImageStyle.style_id == body.style_id))
+        if existing:
+            raise HTTPException(status_code=409, detail="风格标识已存在")
+        row = ImageStyle(
+            style_id=body.style_id,
+            label=body.label,
+            style_prompt=body.style_prompt,
+            analysis_hint=body.analysis_hint,
+            sort_order=body.sort_order,
+            is_active=True,
+            is_system=False,
+        )
+        db.add(row)
+        await db.flush()
+        db.add(SystemEvent(
+            level="info",
+            event_type="admin_style_created",
+            message="developer created image style",
+            event_metadata={"actor": developer.username, "styleId": body.style_id},
+        ))
+        await db.commit()
+        await db.refresh(row)
+        data = _style_dict(row)
+    await style_service.reload_cache()
+    return {"ok": True, "data": data}
+
+
+@router.patch("/styles/{style_id}")
+async def update_style(
+    style_id: str,
+    body: StyleUpdateReq,
+    developer: User = Depends(require_current_developer),
+):
+    from services import style_service
+    changes = body.model_dump(exclude_unset=True)
+    async with async_session() as db:
+        row = await db.scalar(select(ImageStyle).where(ImageStyle.style_id == style_id))
+        if row is None:
+            raise HTTPException(status_code=404, detail="风格不存在")
+        for key, value in changes.items():
+            setattr(row, key, value)
+        await db.flush()
+        db.add(SystemEvent(
+            level="info",
+            event_type="admin_style_updated",
+            message="developer updated image style",
+            event_metadata={"actor": developer.username, "styleId": style_id, "fields": list(changes)},
+        ))
+        await db.commit()
+        await db.refresh(row)
+        data = _style_dict(row)
+    await style_service.reload_cache()
+    return {"ok": True, "data": data}
+
+
+@router.delete("/styles/{style_id}")
+async def delete_style(
+    style_id: str,
+    developer: User = Depends(require_current_developer),
+):
+    from services import style_service
+    async with async_session() as db:
+        row = await db.scalar(select(ImageStyle).where(ImageStyle.style_id == style_id))
+        if row is None:
+            raise HTTPException(status_code=404, detail="风格不存在")
+        if row.is_system:
+            raise HTTPException(status_code=409, detail="内置风格不可删除")
+        await db.delete(row)
+        db.add(SystemEvent(
+            level="warning",
+            event_type="admin_style_deleted",
+            message="developer deleted image style",
+            event_metadata={"actor": developer.username, "styleId": style_id},
+        ))
+        await db.commit()
+    await style_service.reload_cache()
+    return {"ok": True, "data": {"styleId": style_id}}

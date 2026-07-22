@@ -28,6 +28,12 @@ async def lifespan(app: FastAPI):
     deleted_events = await cleanup_old_events()
     logger.info("本地监控事件清理完成，删除 %s 条", deleted_events)
 
+    from services import prompt_service
+    await prompt_service.load_cache()
+
+    from services import style_service
+    await style_service.load_cache()
+
     async def event_cleanup_loop() -> None:
         while True:
             await asyncio.sleep(6 * 60 * 60)

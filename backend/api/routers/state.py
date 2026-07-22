@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth.dependencies import get_current_user
 from db.database import get_db
 from db.models import Hometown, Letter, LetterLike, Memory, PastSelfProfile, Postcard, User
+from services.style_service import get_user_image_style
 from .common import postcard_dict
 
 router = APIRouter(tags=["state"])
@@ -51,6 +52,8 @@ async def get_state(user: User = Depends(get_current_user), db: AsyncSession = D
         )).all()
     ]
 
+    image_style = await get_user_image_style(db, user.id)
+
     profile = await db.scalar(select(PastSelfProfile).where(PastSelfProfile.user_id == user.id))
     past_self = {
         "summary": profile.summary,
@@ -86,4 +89,5 @@ async def get_state(user: User = Depends(get_current_user), db: AsyncSession = D
         "profile": {"hometownName": hometown["hometownName"]}, "letters": letters,
         "memories": memories, "postcards": postcards, "past_self_profile": past_self,
         "likedItems": liked_items,
+        "imageStyle": image_style,
     }}

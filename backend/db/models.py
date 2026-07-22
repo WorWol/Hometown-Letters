@@ -329,3 +329,42 @@ class StorageDeletionTask(Base):
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+# ──────────── prompt overrides ────────────
+
+class PromptOverride(Base):
+    """开发者后台可编辑的 LLM 提示词覆盖。key 对应 prompt_service 中的注册项。"""
+    __tablename__ = "prompt_overrides"
+    __table_args__ = (Index("ix_prompt_overrides_key", "key"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(64), unique=True, nullable=False)
+    content = Column(Text, nullable=False, default="")
+    updated_by = Column(String(64), default="")
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+# ──────────── image styles ────────────
+
+class ImageStyle(Base):
+    """开发者后台可编辑的图像风格预设。
+
+    style_id 唯一标识（如 "pixel_16bit"），is_system 标记内置风格不可删除。
+    运行时由 style_service 加载到内存缓存，admin 修改后刷新缓存。
+    """
+    __tablename__ = "image_styles"
+    __table_args__ = (Index("ix_image_styles_active_sort", "is_active", "sort_order"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    style_id = Column(String(64), unique=True, nullable=False)
+    label = Column(String(64), nullable=False, default="")
+    style_prompt = Column(Text, nullable=False, default="")
+    analysis_hint = Column(Text, nullable=False, default="")
+    sort_order = Column(Integer, default=0, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_system = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)

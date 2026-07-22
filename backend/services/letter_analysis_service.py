@@ -15,62 +15,10 @@ import logging
 from typing import Any
 
 from services.llm_service import LlmService
+from services.prompt_service import get_prompt
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_ANALYSIS = """你是一位情感细腻的故乡叙事者，善于从只言片语中捕捉画面。
-
-用户写了一封信，信中可能提到了某个地点。请深度分析这封信，提取以下信息：
-
-## 你的任务
-1. **visual_themes**：信中提到或隐含的具体视觉元素（建筑、自然景物、光线、颜色、季节、人物活动等），3-8 个，用中文
-2. **emotional_tone**：情感基调，如"怀念/温暖/略带感伤"、"兴奋/青春/活力"，用中文短语
-3. **scene_type**：最匹配的场景类型，从以下选一个: lakeside_dam, bridge_roadside, school_gate, street_food, path_to_pond, park, market, temple, mountain, city, other
-4. **search_keywords**：用于图片搜索的关键词列表（3-5 个），必须包含具体的地理位置上下文。
-   - 如果你知道信中地点所在的城市，一定要加上城市名
-   - 中文+英文混用，覆盖面更广
-   - 例如：如果信中提到"华中科技大学"，你应该写 "武汉 华中科技大学 梧桐 校园"
-5. **core_place**：信件中最核心的地点名称。如果用户明确写出了地名就用它；如果信中没提但给了 place_hint 就用 place_hint；如果都没有则用家乡名称
-6. **generation_place**：本次 Web Search 和图片生成实际使用的地点。明确地点时用信件地点；没有明确地点时用家乡地址，并补充一个当地代表性景点或生活场景。
-7. **image_prompt**：根据前面对信件场景和情感的分析，写一段英文图像生成提示词（50-80词）。必须是 RETRO 16-BIT PIXEL ART 风格。
-   关键要求：
-   - 必须描述具体、可辨识的建筑特征（如红砖教学楼、梧桐树下的石阶、图书馆的拱形窗户）——不能只是泛泛的"校园林荫道"
-   - 视角必须是人的平视/仰视角度，能看到建筑正面或侧面的亲切视角，严禁俯视、鸟瞰、远景
-   - 只描述视觉元素、光线、氛围、色彩，不要出现具体地名
-
-   好例子："16-bit pixel art of red brick campus buildings with ivy-covered walls seen from ground level, parasol trees framing the view, students sitting on stone steps in golden hour light, warm autumn colors, nostalgic game screenshot aesthetic"
-
-   坏例子（太泛，没特征）："16-bit pixel art of a tree-lined campus avenue at golden hour, students walking"
-
-## 用户画像与历史
-如果提供了用户画像和最近写过的信，请注意：
-- 如果当前信件和过去的信提到了同一地点或相关场景，保持视觉主题和情感基调的连贯性
-- 如果用户画像显示了某种性格特质（如"念旧""安静"），分析时尊重这种特质
-- 画像信息仅供参考，不要强行套用——始终以当前信件内容为主
-
-## 注意事项
-- 即使用户设的故乡城市和信中提到的地方不同（如故乡是郴州但信提到武汉的大学），你必须以信件中提到的地方为准
-- 如果信中只是日常问候而没有具体地点，就根据情感基调推断一个场景
-- 搜索关键词中必须包含正确的地理位置
-- image_prompt 必须是可直接使用的英文，50-80词，像素风
-
-## 输出格式
-纯 JSON，不要 markdown，不要解释：
-
-{
-  "visual_themes": ["梧桐树", "教学楼", "黄昏", "学生们"],
-  "emotional_tone": "怀念/温暖/略带感伤",
-  "scene_type": "school_gate",
-  "search_keywords": [
-    "武汉 华中科技大学 梧桐 校园",
-    "university campus tree-lined path autumn",
-    "华中科技大学 教学楼 夕阳"
-  ],
-    "core_place": "华中科技大学",
-    "generation_place": "武汉华中科技大学",
-  "image_prompt": "16-bit pixel art of red brick campus buildings with ivy-covered walls seen from ground level, parasol trees framing the view, students sitting on stone steps in golden hour light, warm autumn colors, nostalgic SNES-era game screenshot aesthetic"
-}
-"""
 
 
 class LetterAnalysisService:
@@ -86,6 +34,7 @@ class LetterAnalysisService:
         mood_hint: str = "",
         hometown: dict | None = None,
         user_context: dict | None = None,
+        style_hint: str | None = None,
     ) -> dict[str, Any]:
         """深度分析信件，返回结构化结果"""
         if not letter_text.strip() and not place_hint.strip() and not hometown:
@@ -118,7 +67,7 @@ class LetterAnalysisService:
 
         try:
             raw = self.llm.chat(
-                SYSTEM_ANALYSIS,
+                get_prompt("letter_analysis", style_hint=style_hint),
                 user_msg,
                 temperature=0.4,
                 max_tokens=600,

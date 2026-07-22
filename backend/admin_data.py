@@ -17,8 +17,8 @@ from auth.developer import require_current_developer
 from auth.security import hash_password
 from db.database import async_session
 from db.models import (
-    Base, Hometown, Letter, LetterLike, LetterMemory, LetterSummary,
-    Mail, Memory, PastSelfProfile, Postcard, Profile, SystemEvent, User,
+    Base, Hometown, ImageStyle, Letter, LetterLike, LetterMemory, LetterSummary,
+    Mail, Memory, PastSelfProfile, Postcard, Profile, PromptOverride, SystemEvent, User,
 )
 from services.data_service import delete_letter, delete_postcard, delete_user, recalculate_postcard_count
 
@@ -36,6 +36,8 @@ TABLES: dict[str, type[Base]] = {
     "past_self_profiles": PastSelfProfile,
     "mails": Mail,
     "letter_likes": LetterLike,
+    "prompt_overrides": PromptOverride,
+    "image_styles": ImageStyle,
     "system_events": SystemEvent,
 }
 

@@ -18,7 +18,7 @@
       if (!payload.data?.is_developer) throw new Error('该账号不是开发者账号');
       localStorage.setItem('hometown_developer_token', payload.data.token);
       localStorage.setItem('hometown_developer_username', username.value.trim());
-      window.location.replace('/admin.html');
+      window.location.replace('/admin/admin.html');
     } catch (loginError) {
       error.textContent = loginError.message;
       button.disabled = false;

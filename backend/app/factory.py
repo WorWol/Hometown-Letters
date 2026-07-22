@@ -74,14 +74,27 @@ def create_app() -> FastAPI:
         if settings.storage_backend.lower() == "oss":
             from storage import asset_url
             return RedirectResponse(asset_url(asset_path), status_code=307)
-        assets_root = (frontend_dir / "assets").resolve()
+        assets_root = (frontend_dir / "app" / "assets").resolve()
         local_path = (assets_root / asset_path).resolve()
         if assets_root not in local_path.parents or not local_path.is_file():
             return Response(status_code=404)
         return FileResponse(local_path)
 
+    # 旧入口 URL 兼容：开发者平台 html 已移入 admin/ 子目录，保留重定向防止书签失效。
+    @app.get("/admin.html", include_in_schema=False)
+    async def _legacy_admin_entry():
+        return RedirectResponse("/admin/admin.html")
+
+    @app.get("/admin-login.html", include_in_schema=False)
+    async def _legacy_admin_login_entry():
+        return RedirectResponse("/admin/admin-login.html")
+
     if media_dir.is_dir():
         app.mount("/media", StaticFiles(directory=media_dir), name="media")
-    if frontend_dir.is_dir():
-        app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+    admin_dir = frontend_dir / "admin"
+    app_dir = frontend_dir / "app"
+    if admin_dir.is_dir():
+        app.mount("/admin", StaticFiles(directory=admin_dir, html=True), name="admin")
+    if app_dir.is_dir():
+        app.mount("/", StaticFiles(directory=app_dir, html=True), name="frontend")
     return app

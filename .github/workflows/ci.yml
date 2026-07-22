@@ -1,0 +1,87 @@
+# 故乡来信 CI/CD 流水线
+#
+# 设计原则（用户要求）：
+#   - push / PR 自动跑测试 + 构建镜像（CI）
+#   - 推送镜像到阿里云 ACR（需配置 Secrets，未配置则跳过推送）
+#   - 生产部署必须手动触发（workflow_dispatch），绝不自动部署，避免服务器崩溃
+#
+# 需要配置的 GitHub Secrets（在仓库 Settings → Secrets and variables → Actions）：
+#   ACR_REGISTRY      阿里云 ACR 仓库地址，如 registry.cn-hangzhou.aliyuncs.com/your-namespace
+#   ACR_USERNAME      ACR 登录账号
+#   ACR_PASSWORD      ACR 登录密码
+#   ECS_HOST          生产 ECS 公网 IP
+#   ECS_USER          SSH 登录用户
+#   ECS_SSH_KEY       SSH 私钥（部署用）
+#   ECS_APP_DIR       ECS 上项目目录路径
+#
+# 未配置 ACR Secrets 时：测试和镜像构建照常执行（验证 Dockerfile），推送和部署步骤自动跳过。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "部署到生产环境（手动触发，需配置 ECS Secrets）"
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    name: 后端测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: 安装依赖
+        run: |
+          pip install --index-url https://mirrors.aliyun.com/pypi/simple/ -r backend/requirements.txt
+          pip install pytest pytest-asyncio
+      - name: 运行测试
+        run: python -m pytest -v
+
+  build:
+    name: 构建镜像
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建镜像（验证 Dockerfile 可用）
+        run: docker build -t hometown-letters:${{ github.sha }} .
+      - name: 登录阿里云 ACR
+        if: ${{ secrets.ACR_REGISTRY != '' }}
+        run: docker login --username="${{ secrets.ACR_USERNAME }}" --password="${{ secrets.ACR_PASSWORD }}" ${{ secrets.ACR_REGISTRY }}
+      - name: 推送镜像到 ACR
+        if: ${{ secrets.ACR_REGISTRY != '' }}
+        run: |
+          docker tag hometown-letters:${{ github.sha }} ${{ secrets.ACR_REGISTRY }}/hometown-letters:${{ github.sha }}
+          docker tag hometown-letters:${{ github.sha }} ${{ secrets.ACR_REGISTRY }}/hometown-letters:latest
+          docker push ${{ secrets.ACR_REGISTRY }}/hometown-letters:${{ github.sha }}
+          docker push ${{ secrets.ACR_REGISTRY }}/hometown-letters:latest
+
+  deploy:
+    name: 部署到生产（手动）
+    needs: build
+    if: github.event.inputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH 到 ECS 执行部署脚本
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_KEY }}
+          script: |
+            cd ${{ secrets.ECS_APP_DIR }}
+            bash scripts/deploy_main.sh

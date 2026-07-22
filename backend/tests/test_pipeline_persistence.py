@@ -33,7 +33,7 @@ class MockSearch:
 
 
 class MockImageGen:
-    async def generate(self, prompt: str, reference_images=None):
+    async def generate(self, prompt: str, reference_images=None, style=None):
         return {"ok": False, "error": "provider unavailable"}
 
 

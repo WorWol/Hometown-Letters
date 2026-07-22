@@ -25,6 +25,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Letter, Postcard, User
+from services.style_service import get_analysis_hint, get_style_prompt
 from storage import delete_images, image_url, save_images, save_reference_image
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class LetterPipeline:
         place_hint: str = "",
         mood_hint: str = "",
         reference_image_data: bytes | None = None,
+        image_style: str | None = None,
     ) -> dict:
         """执行完整的写信管道，返回 {ok, data/error}"""
         logger.info("=== pipeline start user=%s day=%s ===", user.id, user.current_day)
@@ -76,6 +78,7 @@ class LetterPipeline:
                 mood_hint=mood_hint,
                 hometown=hometown if any(hometown.values()) else None,
                 user_context=user_context,
+                style_hint=get_analysis_hint(image_style),
             )
             logger.info(
                 "analysis: core_place=%s tone=%s keywords=%s themes=%s",
@@ -130,7 +133,8 @@ class LetterPipeline:
             else:
                 reference_image = ImageService.encode_reference_image(reference_data, "uploaded.png")
             gen_result = await self.image_gen.generate(
-                image_prompt, reference_images=[reference_image]
+                image_prompt, reference_images=[reference_image],
+                style=get_style_prompt(image_style),
             )
             if not gen_result.get("ok") or not gen_result.get("url"):
                 raise RuntimeError(gen_result.get("error") or "image generation returned no image")
