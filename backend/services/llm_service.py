@@ -21,7 +21,7 @@ class LlmService:
         )
 
     def chat(self, system_prompt: str, user_message: str,
-             model: str = "deepseek-chat",
+             model: str = "deepseek-v4-flash",
              temperature: float = 0.8,
              max_tokens: int = 500) -> str:
         """基础聊天方法"""
