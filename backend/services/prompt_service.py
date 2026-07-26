@@ -39,6 +39,7 @@ _LETTER_ANALYSIS_DEFAULT = """你是一位情感细腻的故乡叙事者，善�
    - 必须描述具体、可辨识的建筑特征（如红砖教学楼、梧桐树下的石阶、图书馆的拱形窗户）--不能只是泛泛的"校园林荫道"
    - 视角必须是人的平视/仰视角度，能看到建筑正面或侧面的亲切视角，严禁俯视、鸟瞰、远景
    - 只描述视觉元素、光线、氛围、色彩，不要出现具体地名
+   - 画面不得出现水印、文字、签名或 logo（在英文 prompt 中明确写出，如 "no watermark, no text, no signature"）
 
    好例子："16-bit pixel art of red brick campus buildings with ivy-covered walls seen from ground level, parasol trees framing the view, students sitting on stone steps in golden hour light, warm autumn colors, nostalgic game screenshot aesthetic"
 
