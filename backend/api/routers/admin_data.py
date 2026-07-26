@@ -22,7 +22,7 @@ from db.models import (
 )
 from services.data_service import delete_letter, delete_postcard, delete_user, recalculate_postcard_count
 
-router = APIRouter(prefix="/api/admin", tags=["admin-data"])
+router = APIRouter(prefix="/admin", tags=["admin-data"])
 
 TABLES: dict[str, type[Base]] = {
     "users": User,

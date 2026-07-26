@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import admin
+from api.routers import admin
 from db.models import Base, ImageStyle, User
 from services import style_service
 

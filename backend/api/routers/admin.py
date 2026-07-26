@@ -23,7 +23,7 @@ from services.data_service import delete_postcard as remove_postcard
 from auth.developer import require_current_developer
 from services import prompt_service
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"])
 _started_at = time.time()
 logger = logging.getLogger("hometown")
 # OSS 一致性检查的并发上限：单张明信片内 4 个对象并发，再以此额度并发多张明信片。

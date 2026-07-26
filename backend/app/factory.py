@@ -56,15 +56,11 @@ def create_app() -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(ApiMetricsMiddleware)
 
-    from admin import router as admin_router
-    from admin_data import router as admin_data_router
     from api.router import router as api_router
     from auth.routes import router as auth_router
 
     app.include_router(auth_router)
     app.include_router(api_router)
-    app.include_router(admin_router)
-    app.include_router(admin_data_router)
 
     frontend_dir = Path(__file__).resolve().parents[1] / ".." / "frontend"
     media_dir = Path(__file__).resolve().parents[1] / "generated_images"

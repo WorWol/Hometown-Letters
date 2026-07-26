@@ -6,8 +6,8 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from admin import _oss_key_status, health, storage_check
-from admin_data import _payload
+from api.routers.admin import _oss_key_status, health, storage_check
+from api.routers.admin_data import _payload
 from auth.developer import get_current_developer, require_current_developer
 from auth.security import create_token
 from app.factory import create_app
@@ -24,7 +24,7 @@ async def database(monkeypatch):
         await connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
         await connection.execute(text("INSERT INTO alembic_version(version_num) VALUES ('test')"))
     maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    monkeypatch.setattr("admin.async_session", maker)
+    monkeypatch.setattr("api.routers.admin.async_session", maker)
     async with maker() as db:
         yield db
     await engine.dispose()
@@ -64,7 +64,7 @@ async def test_developer_dependency_accepts_developer_and_rejects_regular_user(d
 
 @pytest.mark.asyncio
 async def test_health_checks_database_migration_and_storage(database, monkeypatch):
-    monkeypatch.setattr("admin.storage.validate_config", lambda: None)
+    monkeypatch.setattr("api.routers.admin.storage.validate_config", lambda: None)
     result = await health()
     assert result["ok"] is True
     assert result["data"]["migration"] == "test"
@@ -117,7 +117,7 @@ async def test_oss_key_status_returns_none_on_network_failure(monkeypatch):
             raise ConnectionError("SSL EOF")
         return True
 
-    monkeypatch.setattr("admin.storage.object_exists_async", fake_exists)
+    monkeypatch.setattr("api.routers.admin.storage.object_exists_async", fake_exists)
     present = await _oss_key_status({"ok": "k1", "broken": "fail", "empty": ""})
     assert present == {"ok": True, "broken": None, "empty": False}
 
@@ -144,7 +144,7 @@ async def test_storage_check_reports_three_state_consistency(database, monkeypat
             raise ConnectionError("SSL EOF")
         return bool(key)
 
-    monkeypatch.setattr("admin.storage.object_exists_async", fake_exists)
+    monkeypatch.setattr("api.routers.admin.storage.object_exists_async", fake_exists)
     result = await storage_check(postcard_id=None, developer=None)
     items = {item["postcardId"]: item for item in result["data"]["items"]}
 
