@@ -55,6 +55,10 @@ class Settings:
             "ep-m-20260708201152-2zhwj",
         )
     )
+    # 主脑 LLM 模型（火山豆包多模态，支持 function calling + 图片输入）
+    volc_llm_model: str = field(
+        default_factory=lambda: _env("VOLC_LLM_MODEL", "doubao-seed-2-0-lite-260428")
+    )
 
     # ── API Base URLs ──
     deepseek_base_url: str = field(
@@ -66,6 +70,7 @@ class Settings:
         )
     )
     serper_image_url: str = "https://google.serper.dev/images"
+    serper_search_url: str = "https://google.serper.dev/search"
 
     # ── Proxy 配置 ──
     # 全局代理（会被单独的 API 代理覆盖）
@@ -83,10 +88,9 @@ class Settings:
     image_gen_style: str = field(
         default_factory=lambda: _env(
             "IMAGE_GEN_STYLE",
-            "retro 16-bit pixel art, nostalgic game screenshot aesthetic, "
-            "warm nostalgic color palette, visible pixel grid and crisp blocky edges, "
-            "flat 2D shading with limited color count, SNES/GBA-era sprite art quality, "
-            "no smooth gradients, no photorealistic detail, no 3D rendering",
+            "复古16位像素风，怀旧游戏截图质感，暖色怀旧调色板，"
+            "可见像素网格与锐利方块边缘，平涂2D着色低色彩数，"
+            "SNES/GBA时代精灵画质量，无平滑渐变、无写实细节、无3D渲染",
         )
     )
 
@@ -94,7 +98,7 @@ class Settings:
     search_timeout: int = 15
     image_gen_timeout: int = 120
     llm_timeout: int = 30
-    download_timeout: int = 15
+    download_timeout: int = 60
 
     # ── 阿里云 OSS 对象存储 ──
     oss_access_key_id: str = field(default_factory=lambda: _env("OSS_ACCESS_KEY_ID", ""))

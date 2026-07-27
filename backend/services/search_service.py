@@ -14,15 +14,26 @@ class SearchService:
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key or settings.serper_api_key
 
-    async def search_images(self, query: str, num: int = 5) -> list[str]:
-        """搜索图片，返回图片 URL 列表"""
+    async def search_images(self, query: str, num: int = 5) -> list[dict]:
+        """搜索图片，返回 [{url, title, source}] 供 agent 看 meta 决定查看哪些"""
         raw = await self._serper_request(settings.serper_image_url, query, num * 2)
-        image_urls = []
-        for img in raw.get("images", [])[:num]:
-            url = img.get("imageUrl")
-            if url:
-                image_urls.append(url)
-        return image_urls
+        return [
+            {"url": img.get("imageUrl", ""), "title": img.get("title", ""), "source": img.get("source", "")}
+            for img in raw.get("images", [])[:num]
+            if img.get("imageUrl")
+        ]
+
+    async def search_web(self, query: str, num: int = 5) -> list[dict]:
+        """文字搜索，返回 [{title, snippet, link}] 供 agent 查证实体背景。"""
+        raw = await self._serper_request(settings.serper_search_url, query, num)
+        return [
+            {
+                "title": item.get("title", ""),
+                "snippet": item.get("snippet", ""),
+                "link": item.get("link", ""),
+            }
+            for item in raw.get("organic", [])[:num]
+        ]
 
     async def _serper_request(self, url: str, query: str, num: int) -> dict:
         headers = {

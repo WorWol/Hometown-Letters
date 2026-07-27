@@ -16,11 +16,10 @@ async def lifespan(app: FastAPI):
     """Create shared services and run lightweight maintenance tasks."""
     from services.image_service import ImageService
     from storage import validate_config
+    from services.letter_agent import LetterAgent
     from services.llm_service import LlmService
     from services.memory_service import MemoryService
     from services.monitoring_service import cleanup_old_events
-    from services.pipeline_service import LetterPipeline
-    from services.poem_service import PoemService
     from services.search_service import SearchService
     from services.selection_service import SelectionService
 
@@ -71,12 +70,11 @@ async def lifespan(app: FastAPI):
     app.state.llm = llm
     app.state.search = SearchService()
     app.state.image_gen = ImageService()
-    app.state.pipeline = LetterPipeline(
+    app.state.letter_agent = LetterAgent(
         llm=llm,
         search=app.state.search,
         image_gen=app.state.image_gen,
         selection_svc=SelectionService(),
-        poem_svc=PoemService(llm),
         memory_svc=MemoryService(),
     )
     cleanup_task = asyncio.create_task(event_cleanup_loop())

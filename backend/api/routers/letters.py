@@ -11,7 +11,7 @@ from auth.dependencies import get_current_user
 from db.database import get_db
 from db.models import SystemEvent, User
 from services.style_service import get_user_image_style
-from .common import get_pipeline
+from .common import get_letter_agent
 from services.image_service import ImageService
 
 logger = logging.getLogger(__name__)
@@ -35,13 +35,13 @@ async def _reserve_quota(db: AsyncSession, user: User) -> None:
     await db.flush()
 
 
-async def _run_pipeline(*, db, user, pipeline, text: str, place_hint: str, mood_hint: str, reference_image_data: bytes | None = None, image_style: str | None = None):
+async def _run_agent(*, db, user, agent, text: str, place_hint: str, mood_hint: str, reference_image_data: bytes | None = None, image_style: str | None = None):
     await _reserve_quota(db, user)
     try:
-        result = await pipeline.process(db=db, user=user, text=text, place_hint=place_hint, mood_hint=mood_hint, reference_image_data=reference_image_data, image_style=image_style)
+        result = await agent.generate_postcard(db=db, user=user, text=text, place_hint=place_hint, mood_hint=mood_hint, reference_image_data=reference_image_data, image_style=image_style)
         if not result.get("ok"):
             await db.execute(update(User).where(User.id == user.id).values(postcard_count=User.postcard_count - 1))
-            db.add(SystemEvent(level="error", event_type="postcard_failed", message=result.get("error", "postcard pipeline failed"), user_id=user.id))
+            db.add(SystemEvent(level="error", event_type="postcard_failed", message=result.get("error", "postcard agent failed"), user_id=user.id))
         else:
             db.add(SystemEvent(level="info", event_type="postcard_created", message="postcard created", user_id=user.id, event_metadata={"postcard_id": result.get("data", {}).get("id"), "reference_type": "upload" if reference_image_data else "search"}))
         return result
@@ -51,9 +51,9 @@ async def _run_pipeline(*, db, user, pipeline, text: str, place_hint: str, mood_
 
 
 @router.post("/letter/send")
-async def send_letter(body: LetterSendReq, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db), pipeline=Depends(get_pipeline)):
+async def send_letter(body: LetterSendReq, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db), agent=Depends(get_letter_agent)):
     image_style = await get_user_image_style(db, user.id)
-    return await _run_pipeline(db=db, user=user, pipeline=pipeline, text=body.text, place_hint=body.place_hint, mood_hint=body.mood_hint, image_style=image_style)
+    return await _run_agent(db=db, user=user, agent=agent, text=body.text, place_hint=body.place_hint, mood_hint=body.mood_hint, image_style=image_style)
 
 
 @router.post("/letter/send-with-image")
@@ -64,7 +64,7 @@ async def send_letter_with_image(
     image: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    pipeline=Depends(get_pipeline),
+    agent=Depends(get_letter_agent),
 ):
     """使用用户上传的图片作为唯一参考图生成明信片。"""
     data = await image.read(ImageService.MAX_REFERENCE_IMAGE_BYTES + 1)
@@ -72,7 +72,7 @@ async def send_letter_with_image(
     if not valid:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=reason)
     image_style = await get_user_image_style(db, user.id)
-    return await _run_pipeline(db=db, user=user, pipeline=pipeline, text=text, place_hint=place_hint, mood_hint=mood_hint, reference_image_data=data, image_style=image_style)
+    return await _run_agent(db=db, user=user, agent=agent, text=text, place_hint=place_hint, mood_hint=mood_hint, reference_image_data=data, image_style=image_style)
 
 
 @router.get("/community-letters")

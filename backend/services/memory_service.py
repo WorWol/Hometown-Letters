@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Letter, LetterMemory, LetterSummary, PastSelfProfile
+from services.llm_utils import parse_json
 from services.prompt_service import get_prompt
 
 logger = logging.getLogger(__name__)
@@ -102,7 +103,7 @@ class MemoryService:
                 temperature=0.4,
                 max_tokens=900,
             )
-            data = self._parse_json(raw)
+            data = parse_json(raw)
         except Exception as e:
             logger.warning("batch memory LLM call failed: %s", e)
             return
@@ -181,7 +182,7 @@ class MemoryService:
                 temperature=0.4,
                 max_tokens=700,
             )
-            data = self._parse_json(raw)
+            data = parse_json(raw)
         except Exception as e:
             logger.warning("profile rebuild LLM call failed: %s", e)
             return
@@ -355,15 +356,3 @@ class MemoryService:
                 f"第{i}封信（id={lt.id}，地点：{lt.place or '未知'}，情绪：{lt.mood or '未知'}）：\n{snippet}"
             )
         return "\n\n".join(parts)
-
-    def _parse_json(self, raw: str) -> dict | None:
-        clean = raw.strip()
-        if clean.startswith("```"):
-            clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
-            if clean.endswith("```"):
-                clean = clean[:-3]
-        try:
-            return json.loads(clean)
-        except json.JSONDecodeError:
-            logger.warning("failed to parse memory/profile JSON")
-            return None

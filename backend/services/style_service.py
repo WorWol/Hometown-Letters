@@ -20,66 +20,62 @@ logger = logging.getLogger(__name__)
 # 每个风格包含：
 # - id: 唯一标识
 # - label: 前端显示名称
-# - style_prompt: 追加到图像生成 prompt 末尾的风格描述（英文）
-# - analysis_hint: 注入信件分析 prompt 的 {STYLE_HINT} 占位符的风格名称（英文）
+# - style_prompt: 追加到图像生成 prompt 末尾的风格描述（中文）
+# - analysis_hint: 注入信件分析 prompt 的 {STYLE_HINT} 占位符的风格名称（中文）
 
 STYLES: list[dict[str, str]] = [
     {
         "id": "pixel_16bit",
         "label": "16位像素风",
-        "style_prompt": (
-            "retro 16-bit pixel art, nostalgic game screenshot aesthetic, "
-            "warm nostalgic color palette, visible pixel grid and crisp blocky edges, "
-            "flat 2D shading with limited color count, SNES/GBA-era sprite art quality, "
-            "no smooth gradients, no photorealistic detail, no 3D rendering"
-        ),
-        "analysis_hint": "RETRO 16-BIT PIXEL ART",
+        "style_prompt": "16位复古像素画，SNES/GBA时代游戏截图质感，可见像素网格与锐利方块边缘，平涂2D着色，低色彩数怀旧暖色调色板，dithering抖动过渡，CPS2/Neo Geo美学",
+        "analysis_hint": "复古16位像素风",
     },
     {
         "id": "watercolor",
         "label": "水彩风",
-        "style_prompt": (
-            "soft watercolor painting, delicate washes and bleeding edges, "
-            "warm nostalgic color palette, visible paper texture, gentle gradients, "
-            "hand-painted illustration aesthetic, no sharp pixel edges, no 3D rendering"
-        ),
-        "analysis_hint": "SOFT WATERCOLOR PAINTING",
+        "style_prompt": "柔和水彩画，细腻晕染与洇边，可见纸张纹理，透明色层叠加，柔和渐变，手绘插画质感，暖色怀旧调",
+        "analysis_hint": "柔和水彩画",
     },
     {
         "id": "ghibli",
         "label": "吉卜力风",
-        "style_prompt": (
-            "Studio Ghibli style anime illustration, warm hand-painted backgrounds, "
-            "soft natural lighting, lush detailed scenery, nostalgic and gentle atmosphere, "
-            "cel-shaded characters, painterly texture, no photorealism, no 3D rendering"
-        ),
-        "analysis_hint": "STUDIO GHIBLI STYLE ANIME ILLUSTRATION",
+        "style_prompt": "吉卜力风格动漫插画，温暖手绘背景，柔和自然光，繁茂细致景色，赛璐璐角色，怀旧温柔氛围，绘画质感",
+        "analysis_hint": "吉卜力风格动漫插画",
     },
     {
         "id": "ink_wash",
         "label": "水墨风",
-        "style_prompt": (
-            "traditional Chinese ink wash painting, sumi-e aesthetic, "
-            "monochrome ink gradients with subtle warm accents, expressive brush strokes, "
-            "rice paper texture, generous negative space, no photorealism, no 3D rendering"
-        ),
-        "analysis_hint": "TRADITIONAL CHINESE INK WASH PAINTING",
+        "style_prompt": "传统中国水墨画，写意水墨，单色墨韵渐变带细微暖色点缀，写意笔触，宣纸纹理，大量留白",
+        "analysis_hint": "传统中国水墨画",
     },
     {
         "id": "retro_photo",
         "label": "复古胶片",
-        "style_prompt": (
-            "vintage film photograph, warm faded colors, subtle grain and light leaks, "
-            "soft focus, nostalgic 1990s snapshot aesthetic, natural lighting, "
-            "no pixel art, no illustration, no 3D rendering"
-        ),
-        "analysis_hint": "VINTAGE FILM PHOTOGRAPH",
+        "style_prompt": "复古胶片照片，暖色褪色，细微颗粒与漏光，柔焦，90年代快照质感，自然光",
+        "analysis_hint": "复古胶片照片",
     },
 ]
 
 DEFAULT_STYLE_ID = "pixel_16bit"
 
 _STYLE_MAP: dict[str, dict[str, str]] = {s["id"]: s for s in STYLES}
+
+# ── 风格负面词（代码常量，与 style_prompt 正向描述配合，送给生图模型 negative_prompt）──
+_STYLE_NEGATIVES: dict[str, str] = {
+    "pixel_16bit": "平滑渐变, 抗锯齿, 写实细节, 3D渲染, 照片级, 矢量, 高清插画风, 水印, 文字, 签名, logo, 模糊, 低质量",
+    "watercolor": "像素边缘, 锐利线条, 3D渲染, 写实, 鲜艳饱和色, 水印, 文字, 签名, logo, 模糊, 低质量",
+    "ghibli": "3D渲染, 写实, 像素画, 水印, 文字, 签名, logo, 模糊, 低质量, 多余角色",
+    "ink_wash": "3D渲染, 写实, 像素画, 鲜艳饱和色, 水印, 文字, 签名, logo, 模糊",
+    "retro_photo": "像素画, 插画, 3D渲染, 水印, 文字, 签名, logo, 过曝, 模糊, 低质量",
+}
+_DEFAULT_NEGATIVE = "水印, 文字, 签名, logo, 模糊, 低质量, 多余角色, 变形"
+
+
+def get_style_negative(style_id: str | None) -> str:
+    """返回风格的负面提示词（送给生图模型 negative_prompt）。未知风格回退通用负面词。"""
+    if style_id and style_id in _STYLE_NEGATIVES:
+        return _STYLE_NEGATIVES[style_id]
+    return _DEFAULT_NEGATIVE
 
 
 # ── 内存缓存 ──

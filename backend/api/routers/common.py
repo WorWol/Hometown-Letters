@@ -11,8 +11,24 @@ def get_llm(request: Request):
     return request.app.state.llm
 
 
-def get_pipeline(request: Request):
-    return request.app.state.pipeline
+def get_letter_agent(request: Request):
+    return request.app.state.letter_agent
+
+
+def _reference_images_list(postcard: Postcard) -> list[dict]:
+    """序列化参考图列表，兼容老数据（reference_images 为空时回退 reference_image_key）。"""
+    items = postcard.reference_images or []
+    if not items and postcard.reference_image_key:
+        items = [{"key": postcard.reference_image_key, "type": "scene"}]
+    return [
+        {
+            "url": storage.image_url(m.get("key", "")),
+            "type": m.get("type", ""),
+            "entity": m.get("entity", ""),
+            "sourceUrl": m.get("source_url", ""),
+        }
+        for m in items
+    ]
 
 
 def postcard_dict(postcard: Postcard) -> dict:
@@ -28,6 +44,7 @@ def postcard_dict(postcard: Postcard) -> dict:
         "imageThumbUrl": storage.image_url(postcard.image_thumb_key),
         "imageOriginalUrl": storage.image_url(postcard.image_original_key),
         "referenceImageUrl": storage.image_url(postcard.reference_image_key),
+        "referenceImages": _reference_images_list(postcard),
         "imagePrompt": postcard.image_prompt,
         "searchImageUrls": postcard.search_image_urls,
         "createdAt": postcard.created_at.isoformat() if postcard.created_at else "",

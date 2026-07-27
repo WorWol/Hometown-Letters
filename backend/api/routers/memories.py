@@ -10,6 +10,7 @@ from auth.dependencies import get_current_user
 from db.database import get_db
 from db.models import Memory, User
 from .common import get_llm
+from services.prompt_service import get_prompt
 
 router = APIRouter(tags=["memories"])
 
@@ -25,7 +26,7 @@ async def save_memory(body: MemorySaveReq, user: User = Depends(get_current_user
     memory = Memory(user_id=user.id, text=body.text, tags=body.tags, place_hint=body.place_hint, timestamp=datetime.now(timezone.utc), analysis_status="pending")
     db.add(memory)
     await db.flush()
-    memory.summary = llm.chat("用一句话概括这段记忆的核心场景和情感。", body.text, temperature=0.5, max_tokens=100)
+    memory.summary = llm.chat(get_prompt("memory_summary"), body.text, temperature=0.5, max_tokens=100)
     memory.analysis_status = "completed"
     await db.flush()
     return {"ok": True, "data": {"id": f"mem-{memory.id}", "text": memory.text, "tags": memory.tags, "placeHint": memory.place_hint, "timestamp": memory.timestamp.isoformat(), "analysisStatus": memory.analysis_status, "summary": memory.summary}}

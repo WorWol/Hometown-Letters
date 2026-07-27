@@ -73,26 +73,36 @@ class ImageService:
                        size: str = "2K",
                        reference_images: list[str] | None = None,
                        style: str | None = None,
+                       negative_prompt: str | None = None,
                        ) -> dict[str, Any]:
         """生成图像，主模型失败自动切换备用模型。
 
         style: 风格描述文本（来自 style_service.get_style_prompt）。
                为 None 时回退到全局 settings.image_gen_style。
+        negative_prompt: 负面提示词（来自 style_service.get_style_negative）。
+               为 None 时使用通用默认负面词。
         """
         style_text = style or settings.image_gen_style
-        styled_prompt = f"{prompt}. Style: {style_text}"
+        # 风格作为渲染介质前置，场景描述跟在后面，比 ". Style: X" 后缀更易被模型遵循。
+        styled_prompt = f"{style_text}。{prompt}"
+        neg = negative_prompt or "水印, 文字, 签名, logo, 模糊, 低质量, 多余角色, 变形"
+        result: dict[str, Any] = {"ok": False, "error": "no generation path"}
         if self.client:
             result = await self._generate_sdk(styled_prompt, size, reference_images)
-            if result.get("ok"):
-                return result
-            # SDK 模式也尝试备用模型
-            for fb_model in self._FALLBACK_MODELS:
-                logger.info("retrying with fallback model: %s", fb_model)
-                result = await self._generate_sdk(styled_prompt, size, reference_images, model=fb_model)
-                if result.get("ok"):
-                    return result
-            return result
-        return await self._generate_http(styled_prompt, size, reference_images)
+            if not result.get("ok"):
+                # SDK 模式也尝试备用模型
+                for fb_model in self._FALLBACK_MODELS:
+                    logger.info("retrying with fallback model: %s", fb_model)
+                    result = await self._generate_sdk(styled_prompt, size, reference_images, model=fb_model)
+                    if result.get("ok"):
+                        break
+        else:
+            result = await self._generate_http(styled_prompt, size, reference_images, negative_prompt=neg)
+        if result.get("ok"):
+            logger.info("image generated ok: url=%s", str(result.get("url", ""))[:120])
+        else:
+            logger.warning("image generation failed: %s", str(result.get("error", ""))[:100])
+        return result
 
     async def _generate_sdk(self, prompt: str, size: str,
                             reference_images: list[str] | None,
@@ -124,12 +134,13 @@ class ImageService:
 
     async def _generate_http(self, prompt: str, size: str,
                              reference_images: list[str] | None,
-                             model: str | None = None) -> dict[str, Any]:
+                             model: str | None = None,
+                             negative_prompt: str | None = None) -> dict[str, Any]:
         """使用 httpx 异步调用 API，失败自动切备用模型"""
         models_to_try = [model] if model else [settings.volc_model] + self._FALLBACK_MODELS
         last_error = ""
         for m in models_to_try:
-            result = await self._try_generate_http(prompt, size, reference_images, m)
+            result = await self._try_generate_http(prompt, size, reference_images, m, negative_prompt)
             if result.get("ok"):
                 return result
             last_error = result.get("error", "")
@@ -138,7 +149,8 @@ class ImageService:
 
     async def _try_generate_http(self, prompt: str, size: str,
                                  reference_images: list[str] | None,
-                                 model: str) -> dict[str, Any]:
+                                 model: str,
+                                 negative_prompt: str | None = None) -> dict[str, Any]:
         """单次 HTTP 生图调用"""
         url = f"{settings.volc_base_url.rstrip('/')}/images/generations"
         headers = {
@@ -152,6 +164,8 @@ class ImageService:
             "n": 1,
             "response_format": "url",
         }
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
         if reference_images:
             payload["image"] = reference_images
 
@@ -201,7 +215,8 @@ class ImageService:
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
                 return resp.content
-        except Exception:
+        except Exception as e:
+            logger.warning("download_image_bytes failed: %s: %s (url=%s)", type(e).__name__, str(e)[:80], url[:80])
             return None
 
     @staticmethod

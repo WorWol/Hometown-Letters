@@ -20,6 +20,12 @@ class StaticCacheMiddleware(BaseHTTPMiddleware):
         path = request.url.path.lower()
         content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
 
+        # 重定向响应（OSS 模式下 /assets 跳转到签名 URL）不能长缓存：
+        # 签名 URL 15 分钟过期，缓存重定向会让浏览器用过期签名，图片加载失败。
+        if response.status_code in (301, 302, 303, 307, 308):
+            response.headers["Cache-Control"] = "no-store"
+            return response
+
         # HTML 是资源入口，必须每次向服务端确认，才能拿到新版本的 JS/CSS。
         # 否则浏览器可能缓存旧 HTML，继续引用已经不存在或已改名的脚本。
         if content_type == "text/html" or path == "/" or path.endswith(".html"):

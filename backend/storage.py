@@ -76,9 +76,9 @@ def image_keys(user_id: int, image_id: str) -> dict[str, str]:
     return {name: f"{prefix}/{user_id}/{image_id}/{name}.webp" for name in ("thumb", "card", "original")}
 
 
-def reference_image_key(user_id: int, image_id: str) -> str:
+def reference_image_key(user_id: int, image_id: str, index: int = 0) -> str:
     prefix = settings.oss_object_prefix.strip("/") or "postcards"
-    return f"{prefix}/{user_id}/{image_id}/reference.webp"
+    return f"{prefix}/{user_id}/{image_id}/reference_{index}.webp"
 
 
 async def save_images(user_id: int, image_id: str, data: bytes) -> dict[str, str]:
@@ -117,25 +117,46 @@ async def save_images(user_id: int, image_id: str, data: bytes) -> dict[str, str
 
 
 async def save_reference_image(user_id: int, image_id: str, data: bytes) -> str:
-    key = reference_image_key(user_id, image_id)
-    with Image.open(BytesIO(data)) as source:
-        payload = _encode_webp(source, 2048, 90)
+    """存单张参考图（兼容老调用）。新代码用 save_reference_images 支持多图。"""
+    metas = await save_reference_images(user_id, image_id, [{"data": data}])
+    return metas[0]["key"]
+
+
+async def save_reference_images(user_id: int, image_id: str, items: list[dict]) -> list[dict]:
+    """存多张参考图到 OSS/本地。
+
+    items: [{"data": bytes, "source_url": str(可选)}]
+    返回: [{"key", "source_url"}]（type/entity 由调用方补充）
+    单张失败会回滚已写入的对象。
+    """
     bucket = _bucket("upload")
-    if bucket:
-        result = await asyncio.to_thread(
-            bucket.put_object,
-            key,
-            payload,
-            headers={"Content-Type": "image/webp", "Cache-Control": "private, max-age=31536000, immutable"},
-        )
-        if not 200 <= result.status < 300:
-            raise RuntimeError(f"reference image upload failed: {key}, HTTP {result.status}")
-    else:
-        path = IMAGES_DIR / key
-        path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(path, "wb") as output:
-            await output.write(payload)
-    return key
+    metas: list[dict] = []
+    written: list[str] = []
+    try:
+        for index, item in enumerate(items):
+            key = reference_image_key(user_id, image_id, index)
+            with Image.open(BytesIO(item["data"])) as source:
+                payload = _encode_webp(source, 2048, 90)
+            if bucket:
+                result = await asyncio.to_thread(
+                    bucket.put_object,
+                    key,
+                    payload,
+                    headers={"Content-Type": "image/webp", "Cache-Control": "private, max-age=31536000, immutable"},
+                )
+                if not 200 <= result.status < 300:
+                    raise RuntimeError(f"reference image upload failed: {key}, HTTP {result.status}")
+            else:
+                path = IMAGES_DIR / key
+                path.parent.mkdir(parents=True, exist_ok=True)
+                async with aiofiles.open(path, "wb") as output:
+                    await output.write(payload)
+            written.append(key)
+            metas.append({"key": key, "source_url": item.get("source_url", "")})
+    except Exception:
+        await delete_images({f"ref_{i}": k for i, k in enumerate(written)})
+        raise
+    return metas
 
 
 async def delete_images(keys: dict[str, str]) -> None:

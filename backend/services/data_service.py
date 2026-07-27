@@ -10,12 +10,17 @@ from db.models import Hometown, Letter, LetterLike, LetterMemory, LetterSummary,
 
 
 def postcard_keys(row: Postcard) -> dict[str, str]:
-    return {
+    keys = {
         "thumb": row.image_thumb_key,
         "card": row.image_card_key,
         "original": row.image_original_key,
         "reference": row.reference_image_key,
     }
+    for i, m in enumerate(row.reference_images or []):
+        k = m.get("key")
+        if k and k not in keys.values():
+            keys[f"ref_{i}"] = k
+    return keys
 
 
 async def recalculate_postcard_count(db: AsyncSession, user_id: int) -> int:

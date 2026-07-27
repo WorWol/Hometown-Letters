@@ -61,15 +61,13 @@ Hometown-Letters/
 │   │   ├── models.py            # ORM 模型（11 张表）
 │   │   └── migrations/          # Alembic 迁移
 │   ├── services/
-│   │   ├── pipeline_service.py  # 9 阶段信件处理管道
-│   │   ├── letter_analysis_service.py  # LLM 信件分析
+│   │   ├── letter_agent.py      # 端到端写信 agent（agent 分析 + 编排）
 │   │   ├── llm_service.py       # DeepSeek 封装
 │   │   ├── search_service.py    # Serper 图片/文字搜索
 │   │   ├── image_service.py     # 火山引擎图片生成
 │   │   ├── storage.py           # 本地/OSS 双后端存储
 │   │   ├── data_service.py      # 数据删除和派生计数
-│   │   └── persistent_metrics.py # API 指标和限流持久化
-│   │   ├── poem_service.py      # 诗歌 + 标题 + 正文生成
+│   │   ├── persistent_metrics.py # API 指标和限流持久化
 │   │   ├── selection_service.py # 图片去重/筛选
 │   │   └── memory_service.py    # 记忆摘要 + 人格画像
 │   └── tests/

@@ -82,17 +82,27 @@ def _postcard_dict(row: Postcard) -> dict:
             "card": row.image_card_key,
             "original": row.image_original_key,
             "reference": row.reference_image_key,
+            "references": [
+                {"key": m.get("key", ""), "type": m.get("type", ""), "entity": m.get("entity", "")}
+                for m in (row.reference_images or ([{"key": row.reference_image_key, "type": "scene"}] if row.reference_image_key else []))
+            ],
         },
     }
 
 
-def _postcard_image_urls(row: Postcard) -> dict[str, str]:
-    return {
+def _postcard_image_urls(row: Postcard) -> dict:
+    urls = {
         "thumb": storage.image_url(row.image_thumb_key),
         "card": storage.image_url(row.image_card_key),
         "original": storage.image_url(row.image_original_key),
         "reference": storage.image_url(row.reference_image_key),
     }
+    items = row.reference_images or ([{"key": row.reference_image_key, "type": "scene"}] if row.reference_image_key else [])
+    urls["references"] = [
+        {"url": storage.image_url(m.get("key", "")), "type": m.get("type", ""), "entity": m.get("entity", "")}
+        for m in items
+    ]
+    return urls
 
 
 async def _oss_key_status(keys: dict[str, str]) -> dict[str, bool | None]:
@@ -302,6 +312,10 @@ async def storage_check(
             "original": row.image_original_key,
             "reference": row.reference_image_key,
         }
+        for i, m in enumerate(row.reference_images or []):
+            k = m.get("key")
+            if k and k not in keys.values():
+                keys[f"ref_{i}"] = k
         async with semaphore:
             present = await _oss_key_status(keys)
         tracked = [name for name, key in keys.items() if key]

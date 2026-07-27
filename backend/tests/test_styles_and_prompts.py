@@ -52,8 +52,8 @@ class TestPromptService:
         # 重置缓存状态
         prompt_service._cache.clear()
         prompt_service._loaded = False
-        content = prompt_service.get_prompt("poem")
-        assert "诗人" in content
+        content = prompt_service.get_prompt("letter_analysis")
+        assert "诗" in content
 
     def test_get_prompt_with_style_hint_replacement(self):
         prompt_service._cache.clear()
@@ -72,8 +72,8 @@ class TestPromptService:
             assert meta["content"], f"{key} has empty default content"
             assert meta["label"], f"{key} has empty label"
 
-    def test_seven_prompts_registered(self):
-        expected = {"letter_analysis", "poem", "title", "body", "image_prompt", "batch_memory", "profile"}
+    def test_all_prompts_registered(self):
+        expected = {"letter_analysis", "batch_memory", "profile", "memory_summary"}
         assert set(prompt_service.PROMPT_DEFAULTS.keys()) == expected
 
     def test_letter_analysis_has_style_hint_placeholder(self):
@@ -102,18 +102,18 @@ class TestPromptService:
         assert not prompt_service._cache
 
         # 设置覆盖
-        await prompt_service.set_override("poem", "覆盖的诗歌提示词", "developer1")
-        assert prompt_service._cache["poem"] == "覆盖的诗歌提示词"
-        assert prompt_service.get_prompt("poem") == "覆盖的诗歌提示词"
+        await prompt_service.set_override("letter_analysis", "覆盖的诗歌提示词", "developer1")
+        assert prompt_service._cache["letter_analysis"] == "覆盖的诗歌提示词"
+        assert prompt_service.get_prompt("letter_analysis") == "覆盖的诗歌提示词"
 
         # 重置
-        await prompt_service.reset_override("poem")
-        assert "poem" not in prompt_service._cache
-        assert "诗人" in prompt_service.get_prompt("poem")  # 回到默认
+        await prompt_service.reset_override("letter_analysis")
+        assert "letter_analysis" not in prompt_service._cache
+        assert "诗" in prompt_service.get_prompt("letter_analysis")  # 回到默认
 
         # 验证 DB 中确实删除了
         async with session_factory() as db:
-            result = await db.execute(select(PromptOverride).where(PromptOverride.key == "poem"))
+            result = await db.execute(select(PromptOverride).where(PromptOverride.key == "letter_analysis"))
             assert result.scalar_one_or_none() is None
 
         await engine.dispose()
@@ -130,14 +130,14 @@ class TestPromptService:
         monkeypatch.setattr(prompt_service, "async_session", session_factory)
 
         await prompt_service.load_cache()
-        await prompt_service.set_override("title", "覆盖标题", "dev")
+        await prompt_service.set_override("batch_memory", "覆盖标题", "dev")
 
         prompts = await prompt_service.list_prompts()
-        title_prompt = next(p for p in prompts if p["key"] == "title")
+        title_prompt = next(p for p in prompts if p["key"] == "batch_memory")
         assert title_prompt["overridden"] is True
         assert title_prompt["content"] == "覆盖标题"
 
-        poem_prompt = next(p for p in prompts if p["key"] == "poem")
+        poem_prompt = next(p for p in prompts if p["key"] == "profile")
         assert poem_prompt["overridden"] is False
         assert poem_prompt["content"] == poem_prompt["defaultContent"]
 
