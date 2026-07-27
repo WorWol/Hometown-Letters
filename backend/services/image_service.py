@@ -130,7 +130,7 @@ class ImageService:
             return {"ok": False, "error": str(response)}
         except Exception as e:
             logger.error("SDK image gen exception: %s", e)
-            return {"ok": False, "error": str(e)}
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
     async def _generate_http(self, prompt: str, size: str,
                              reference_images: list[str] | None,
@@ -187,7 +187,7 @@ class ImageService:
                 return {"ok": False, "error": json.dumps(data, ensure_ascii=False)[:500]}
         except Exception as e:
             logger.error("HTTP image gen exception: %s", e)
-            return {"ok": False, "error": str(e)}
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
     @staticmethod
     def _normalize_size(size: str) -> str:
@@ -225,3 +225,27 @@ class ImageService:
         ext = source_url.rsplit(".", 1)[-1].split("?", 1)[0].lower() if "." in source_url else "jpeg"
         mime = "jpeg" if ext in ("jpg", "jpeg") else "png"
         return f"data:image/{mime};base64,{base64.b64encode(data).decode()}"
+
+    @staticmethod
+    def prepare_reference_image(data: bytes, max_edge: int = 1024) -> bytes:
+        """缩放参考图长边到 max_edge 并转 JPEG，减小生图请求体积、提高首次成功率。"""
+        try:
+            with Image.open(BytesIO(data)) as im:
+                im = im.convert("RGB")
+                w, h = im.size
+                scale = max_edge / max(w, h)
+                if scale < 1:
+                    im = im.resize((max(1, int(w * scale)), max(1, int(h * scale))),
+                                   Image.Resampling.LANCZOS)
+                buf = BytesIO()
+                im.save(buf, format="JPEG", quality=85)
+                return buf.getvalue()
+        except Exception:
+            logger.warning("参考图缩放失败，使用原图")
+            return data
+
+    @staticmethod
+    def encode_reference_image_for_generation(data: bytes, max_edge: int = 1024) -> str:
+        """缩放参考图后编码成 JPEG data URL（仅供生图用，避免发送超大原图）。"""
+        prepped = ImageService.prepare_reference_image(data, max_edge)
+        return f"data:image/jpeg;base64,{base64.b64encode(prepped).decode()}"

@@ -373,7 +373,8 @@ class LetterAgent:
                 if failed:
                     logger.info("agent generate_image[%d]: 参考图下载失败 %d 张", generate_calls, len(failed))
                     return json.dumps({"ok": False, "error": f"参考图下载失败 {[u[:50] for u in failed]}，请换一张参考图重试"}, ensure_ascii=False)
-                encoded = [ImageService.encode_reference_image(d, u) for d, u in ref_data]
+                # 参考图先缩放到长边 1024 再编码，避免超大原图导致生图首次失败
+                encoded = [ImageService.encode_reference_image_for_generation(d) for d, u in ref_data]
                 result = await self.image_gen.generate(
                     gen_prompt, reference_images=encoded,
                     style=get_style_prompt(image_style),
@@ -417,9 +418,52 @@ class LetterAgent:
         result["generation_place"] = result.get("generation_place") or result["core_place"]
         result.setdefault("emotional_tone", mood_hint or "温暖/怀念")
         result.setdefault("visual_themes", [])
+        # ── 防作弊 + 兜底生图 ──
+        # image_url 必须是真实生成图；若为空或等于某张参考图 URL（agent 没真生图、拿参考图顶替），
+        # 则用 agent 的 image_prompt + 参考图直接调一次生图兜底，保证用户拿到的是真生成图。
+        if self.image_gen is not None:
+            ref_url_set = {r.get("url", "") for r in result.get("reference_images", []) if r.get("url")}
+            gen_url = result.get("image_url", "")
+            if not gen_url or gen_url in ref_url_set:
+                logger.warning("agent image_url 缺失或为参考图URL(疑似作弊)，触发兜底生图")
+                fb_url = await self._fallback_generate(result, viewed_images, image_style)
+                result["image_url"] = fb_url or ""
         return result
 
     # ── 辅助 ──
+
+    async def _fallback_generate(
+        self, result: dict[str, Any], viewed_images: dict[str, bytes],
+        image_style: str | None,
+    ) -> str | None:
+        """agent 未真正生图时的兜底：用 agent 的 image_prompt + 参考图直接调生图。"""
+        from services.image_service import ImageService
+        prompt = result.get("image_prompt", "")
+        if not prompt:
+            return None
+        encoded: list[str] = []
+        for ref in result.get("reference_images", [])[:4]:
+            url = ref.get("url", "")
+            data = viewed_images.get(url)
+            if not data:
+                data = await ImageService.download_image_bytes(url)
+            if data:
+                encoded.append(ImageService.encode_reference_image_for_generation(data))
+        try:
+            res = await self.image_gen.generate(
+                prompt,
+                reference_images=encoded or None,
+                style=get_style_prompt(image_style),
+                negative_prompt=get_style_negative(image_style),
+            )
+        except Exception as e:
+            logger.warning("兜底生图异常: %s: %s", type(e).__name__, e)
+            return None
+        if res.get("ok") and res.get("url"):
+            logger.info("兜底生图成功: %s", str(res["url"])[:80])
+            return res["url"]
+        logger.warning("兜底生图失败: %s", res.get("error", ""))
+        return None
 
     def _build_user_msg(
         self, letter_text: str, place_hint: str, mood_hint: str,
