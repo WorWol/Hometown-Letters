@@ -52,6 +52,8 @@ class ImageService:
     def __init__(self):
         self.client = None
 
+        self._http_client: httpx.AsyncClient | None = None
+
         if _HAS_SDK:
             # SDK 模式也通过 httpx 代理
             proxy = settings.get_proxy_for("volc")
@@ -65,6 +67,18 @@ class ImageService:
             )
 
     # 主模型失败时的备用模型列表
+    @property
+    def http_client(self) -> httpx.AsyncClient:
+        """复用的持久连接客户端，减少 TLS 握手与瞬时连接错误。"""
+        if self._http_client is None:
+            proxy = settings.get_proxy_for("volc")
+            self._http_client = httpx.AsyncClient(
+                proxy=proxy,
+                timeout=settings.image_gen_timeout,
+                limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+            )
+        return self._http_client
+
     _FALLBACK_MODELS = [
         "doubao-seedream-4-0-250828",
     ]
@@ -170,21 +184,18 @@ class ImageService:
             payload["image"] = reference_images
 
         try:
-            proxy = settings.get_proxy_for("volc")
-            async with httpx.AsyncClient(proxy=proxy,
-                                         timeout=settings.image_gen_timeout) as client:
-                resp = await client.post(url, headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                choices = data.get("data", [])
-                if choices:
-                    return {
-                        "ok": True,
-                        "url": choices[0].get("url", ""),
-                        "revised_prompt": choices[0].get("revised_prompt", ""),
-                    }
-                logger.warning("HTTP image gen returned no data: %s", json.dumps(data, ensure_ascii=False)[:500])
-                return {"ok": False, "error": json.dumps(data, ensure_ascii=False)[:500]}
+            resp = await self.http_client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            choices = data.get("data", [])
+            if choices:
+                return {
+                    "ok": True,
+                    "url": choices[0].get("url", ""),
+                    "revised_prompt": choices[0].get("revised_prompt", ""),
+                }
+            logger.warning("HTTP image gen returned no data: %s", json.dumps(data, ensure_ascii=False)[:500])
+            return {"ok": False, "error": json.dumps(data, ensure_ascii=False)[:500]}
         except Exception as e:
             logger.error("HTTP image gen exception: %s", e)
             return {"ok": False, "error": f"{type(e).__name__}: {e}"}

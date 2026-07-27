@@ -4,6 +4,7 @@
 既能做 agent 分析（调 search_web 查证），又能看图（描述角色形象等）。
 """
 import json
+import asyncio
 import httpx
 from openai import OpenAI, AsyncOpenAI
 
@@ -92,20 +93,23 @@ class LlmService:
                     for tc in msg.tool_calls
                 ],
             })
-            for tc in msg.tool_calls:
-                name = tc.function.name
+            # 并行执行本轮所有工具调用（asyncio.gather 保序）
+            async def _run_tool(tc):
                 try:
                     args = json.loads(tc.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
                 try:
-                    result = await tool_handler(name, args)
+                    result = await tool_handler(tc.function.name, args)
                 except Exception as e:
                     result = f"工具调用失败: {e}"
+                return {"tool_call_id": tc.id, "content": str(result)}
+            tool_results = await asyncio.gather(*(_run_tool(tc) for tc in msg.tool_calls))
+            for tr in tool_results:
                 messages.append({
                     "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": str(result),
+                    "tool_call_id": tr["tool_call_id"],
+                    "content": tr["content"],
                 })
         return last_content
 

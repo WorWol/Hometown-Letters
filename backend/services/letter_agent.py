@@ -18,6 +18,7 @@ agent 自主决策搜什么、看哪些、选哪张、怎么构造场景；审�
 from __future__ import annotations
 
 import json
+import asyncio
 import logging
 import traceback
 from datetime import datetime, timezone
@@ -40,6 +41,9 @@ logger = logging.getLogger("hometown")
 _MAX_WEB_SEARCH = 3
 _MAX_IMAGE_SEARCH = 4
 _MAX_VIEW_IMAGE = 6
+
+# view_images 的视觉描述指令（批量看图复用）
+_VIEW_PROMPT = "看图后回答：1)画质是否清晰可用；2)若是场景图，描述关键场景元素（建筑材质年代/地形植被/光线色调/地标轮廓，80字内），供构造生图场景用；3)若是角色图，判断是否目标角色并说作品名（如'鸣潮菲比立绘'或'无关少女图'）。不要描述角色形象特征（发色/服装/标志物）。"
 _MAX_GENERATE = 2
 
 
@@ -282,12 +286,12 @@ class LetterAgent:
             {
                 "type": "function",
                 "function": {
-                    "name": "view_image",
-                    "description": "下载并查看图片，返回视觉描述（场景、人物形象特征、画质）。用于判断图片是否适合作参考。",
+                    "name": "view_images",
+                    "description": "批量下载并查看多张图片（并行），返回 [{url, desc}]。一次性查看所有候选图，不要一张张看，节省时间。",
                     "parameters": {
                         "type": "object",
-                        "properties": {"url": {"type": "string", "description": "图片URL"}},
-                        "required": ["url"],
+                        "properties": {"urls": {"type": "array", "items": {"type": "string"}, "description": "图片URL列表"}},
+                        "required": ["urls"],
                     },
                 },
             },
@@ -335,36 +339,45 @@ class LetterAgent:
                 results = await search_svc.search_images(query, num=num)
                 logger.info("agent search_images[%d]: %s -> %d 张", image_search_calls, query, len(results))
                 return json.dumps(results, ensure_ascii=False)
-            if name == "view_image":
-                if view_calls >= _MAX_VIEW_IMAGE:
-                    return "已达看图次数上限，请基于已有信息选图"
-                view_calls += 1
-                url = (args.get("url") or "")[:500]
-                data = await ImageService.download_image_bytes(url)
-                if not data:
-                    return "图片下载失败（可能防盗链或失效），换一张试试"
-                viewed_images[url] = data  # 缓存，编排层直接复用，避免重复下载
-                data_url = ImageService.encode_reference_image(data, url)
-                desc = await self.llm.vision_describe(
-                    data_url,
-                    "看图后回答：1)画质是否清晰可用；2)若是场景图，描述关键场景元素（建筑材质年代/地形植被/光线色调/地标轮廓，80字内），供构造生图场景用；3)若是角色图，判断是否目标角色并说作品名（如'鸣潮菲比立绘'或'无关少女图'）。不要描述角色形象特征（发色/服装/标志物）。",
-                )
-                logger.info("agent view_image[%d]: %s -> %s", view_calls, url[:60], desc[:60])
-                return desc
+            if name == "view_images":
+                urls = args.get("urls") or []
+                room = _MAX_VIEW_IMAGE - view_calls
+                if room <= 0:
+                    return json.dumps([{"url": u, "desc": "已达看图次数上限"} for u in urls], ensure_ascii=False)
+                urls = urls[:room]
+                view_calls += len(urls)
+
+                async def _view_one(u):
+                    u = (u or "")[:500]
+                    data = await ImageService.download_image_bytes(u)
+                    if not data:
+                        return {"url": u, "desc": "图片下载失败（可能防盗链或失效），换一张"}
+                    viewed_images[u] = data  # 缓存，编排层直接复用，避免重复下载
+                    data_url = ImageService.encode_reference_image(data, u)
+                    desc = await self.llm.vision_describe(data_url, _VIEW_PROMPT)
+                    logger.info("agent view_images: %s -> %s", u[:60], desc[:60])
+                    return {"url": u, "desc": desc}
+
+                results = await asyncio.gather(*(_view_one(u) for u in urls))
+                return json.dumps(results, ensure_ascii=False)
             if name == "generate_image":
                 if generate_calls >= _MAX_GENERATE:
                     return json.dumps({"ok": False, "error": "已达生图次数上限，请用已有结果输出"}, ensure_ascii=False)
                 generate_calls += 1
                 gen_prompt = args.get("prompt", "")
                 ref_urls = args.get("reference_image_urls", [])[:4]
-                # 下载参考图（优先缓存，失败反馈给 agent 换图）
-                ref_data = []
-                failed = []
-                for rurl in ref_urls:
+
+                async def _dl_ref(rurl):
                     rurl = (rurl or "")[:500]
                     d = viewed_images.get(rurl)
                     if not d:
                         d = await ImageService.download_image_bytes(rurl)
+                    return (rurl, d)
+
+                dl_results = await asyncio.gather(*(_dl_ref(u) for u in ref_urls))
+                ref_data = []
+                failed = []
+                for rurl, d in dl_results:
                     if d:
                         viewed_images[rurl] = d
                         ref_data.append((d, rurl))
@@ -441,14 +454,17 @@ class LetterAgent:
         prompt = result.get("image_prompt", "")
         if not prompt:
             return None
-        encoded: list[str] = []
-        for ref in result.get("reference_images", [])[:4]:
+        ref_list = result.get("reference_images", [])[:4]
+
+        async def _fb_dl(ref):
             url = ref.get("url", "")
             data = viewed_images.get(url)
             if not data:
                 data = await ImageService.download_image_bytes(url)
-            if data:
-                encoded.append(ImageService.encode_reference_image_for_generation(data))
+            return data
+
+        dl_results = await asyncio.gather(*(_fb_dl(r) for r in ref_list))
+        encoded = [ImageService.encode_reference_image_for_generation(d) for d in dl_results if d]
         try:
             res = await self.image_gen.generate(
                 prompt,
