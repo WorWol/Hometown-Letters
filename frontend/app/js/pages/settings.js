@@ -19,15 +19,18 @@ function renderSettings() {
       </section>
       <section class="paper-panel setting-card account-card">
         <span class="section-kicker">ACCOUNT</span><h2>账户</h2>
-        <div class="account-person"><span class="mailbox-avatar">${App._e((user?.username || '访')[0])}</span><div><strong>${App._e(user?.username || '访客')}</strong><small>${user ? '信箱已经上锁保管' : '当前正在随便看看'}</small></div></div>
-        ${user ? '<button class="btn btn-dng" onclick="doLogout()">退出登录</button>' : '<button class="btn btn-pri" onclick="showAuthGate()">登录信箱</button>'}
+        <div class="account-person"><span class="mailbox-avatar">${App._e((user?.username || '访')[0])}</span><div><strong>${App._e(user?.username || '访客')}</strong><small>${user ? '已登录' : '访客模式'}</small></div></div>
+        <div class="account-actions">
+          ${user ? '<button class="btn btn-dng" onclick="doLogout()">退出登录</button>' : '<button class="btn btn-pri" onclick="showAuthGate()">登录</button>'}
+          <button class="btn btn-sec" onclick="Onboarding.start({ force: true })">${user ? '重新查看新手引导' : '查看新手引导'}</button>
+        </div>
       </section>
       <section class="dark-panel setting-card status-card">
         <span class="section-kicker">JOURNEY STATUS</span><h2>旅程状态</h2>
         <div class="stat-grid four"><div><strong>${state.currentDay || 0}</strong><span>天</span></div><div><strong>${(state.postcards || []).length}</strong><span>明信片</span></div><div><strong>${(state.memories || []).length}</strong><span>记忆</span></div><div><strong>${(state.letters || []).length}</strong><span>信件</span></div></div>
       </section>
       <section class="paper-panel setting-card connection-card">
-        <span class="section-kicker">CONNECTION</span><h2>邮路连接</h2><p>检查网页与故乡来信服务是否连通。</p>
+        <span class="section-kicker">CONNECTION</span><h2>服务连接</h2><p>检查网页是否可以正常连接服务。</p>
         <div class="setting-actions"><button class="btn btn-sec" onclick="checkBack()">检查连接</button><span class="st" id="s-backend-st" aria-live="polite">&nbsp;</span></div>
       </section>
     </div>`;
@@ -43,14 +46,14 @@ async function saveHome() {
     App.state.profile = response.data.profile;
     App.state.initialized = true;
     App.syncShell();
-    status.textContent = '已保存';
-    App.showToast('故乡地址已更新');
-  } catch (error) { status.textContent = error.message || '网络错误'; }
+    status.textContent = '故乡已保存';
+    App.showToast('故乡已保存');
+  } catch (error) { status.textContent = App.friendlyError(error, '保存失败，请稍后重试'); }
 }
 
 async function checkBack() {
   const status = document.getElementById('s-backend-st');
   status.textContent = '检查中…';
-  try { const response = await api.getMe(); status.textContent = response.ok ? '邮路畅通' : '连接异常'; }
-  catch (error) { status.textContent = '无法连接'; }
+  try { const response = await api.getMe(); status.textContent = response.ok ? '连接正常' : '连接异常'; }
+  catch (error) { status.textContent = App.friendlyError(error, '连接失败，请稍后重试'); }
 }

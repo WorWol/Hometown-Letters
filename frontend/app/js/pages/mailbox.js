@@ -24,7 +24,7 @@ function _renderMailboxCore(el) {
             <span class="section-kicker" id="mbox-heading-kicker">${_mboxUnread > 0 ? _mboxUnread + ' UNREAD' : 'YOUR MAIL'}</span>
             <h2>${inboxActive ? '收件箱' : '发件箱'}</h2>
           </div>
-          <div class="mailbox-tabs" role="tablist">
+          <div class="mailbox-tabs" role="tablist" aria-label="信箱分类">
             <button class="auth-tab ${inboxActive ? 'active' : ''}" id="mbox-inbox-tab" role="tab" aria-selected="${inboxActive}"
               onclick="_switchMailboxTab('inbox')">收件${_mboxUnread > 0 ? `<span class="mailbox-badge">${_mboxUnread}</span>` : ''}</button>
             <button class="auth-tab ${!inboxActive ? 'active' : ''}" role="tab" aria-selected="${!inboxActive}"
@@ -32,15 +32,15 @@ function _renderMailboxCore(el) {
           </div>
         </div>
         <div class="mailbox-list" id="mailbox-list">
-          <div class="visual-empty"><div><p>加载中……</p></div></div>
+          <div class="visual-empty"><div><p>正在加载信箱…</p></div></div>
         </div>
       </section>
       <aside class="mailbox-side" aria-label="信箱操作与状态">
         <section class="dark-panel mailbox-compose-card">
           <span class="section-kicker">SEND A LETTER</span>
-          <h3>寄出一封信</h3>
-          <p>把想说的话装在信封里，寄给另一位同样在回望故乡的人。</p>
-          <button class="btn btn-pri" onclick="_showComposeMail()">✉ 写一封信</button>
+          <h3>给其他用户写信</h3>
+          <p>输入对方的用户名，即可发送文字和附件。</p>
+          <button class="btn btn-pri" onclick="_showComposeMail()">写一封信</button>
         </section>
         <section class="paper-panel mailbox-stats-card">
           <span class="section-kicker">MAILBOX STATUS</span>
@@ -71,7 +71,7 @@ async function _loadMailboxList() {
   _mboxBusy = true;
   const listEl = document.getElementById('mailbox-list');
   if (!listEl) { _mboxBusy = false; return; }
-  listEl.innerHTML = '<div class="visual-empty"><div><p>正在翻开信箱……</p></div></div>';
+  listEl.innerHTML = '<div class="visual-empty"><div><p>正在加载信件…</p></div></div>';
 
   try {
     if (_mboxTab === 'inbox') {
@@ -81,7 +81,7 @@ async function _loadMailboxList() {
         _renderMailList(listEl, (r.data.mails || []).map(mail => App.normalizeMail(mail)), 'inbox');
         _updateStats(r.data.unreadCount || 0, r.data.total || 0);
       } else {
-        listEl.innerHTML = '<div class="visual-empty"><div><p>暂时无法打开收件箱。</p></div></div>';
+        listEl.innerHTML = '<div class="visual-empty"><div><p>收件箱加载失败。</p><button class="btn btn-sec" onclick="_loadMailboxList()">重新加载</button></div></div>';
       }
     } else {
       const r = await api.getOutbox(1, 30);
@@ -89,11 +89,11 @@ async function _loadMailboxList() {
         _renderMailList(listEl, (r.data.mails || []).map(mail => App.normalizeMail(mail)), 'outbox');
         _updateStats(0, r.data.total || 0);
       } else {
-        listEl.innerHTML = '<div class="visual-empty"><div><p>暂时无法打开发件箱。</p></div></div>';
+        listEl.innerHTML = '<div class="visual-empty"><div><p>发件箱加载失败。</p><button class="btn btn-sec" onclick="_loadMailboxList()">重新加载</button></div></div>';
       }
     }
   } catch (e) {
-    listEl.innerHTML = '<div class="visual-empty"><div><p>信箱暂时打不开，检查一下网络吧。</p></div></div>';
+    listEl.innerHTML = '<div class="visual-empty"><div><p>信箱加载失败，请检查网络。</p><button class="btn btn-sec" onclick="_loadMailboxList()">重新加载</button></div></div>';
   }
   _mboxBusy = false;
 }
@@ -114,8 +114,8 @@ function _renderMailList(container, mails, type) {
         <img src="assets/workbench/empty-mailbox-scene.webp" alt="清晨桌面上的乡间邮箱与待寄信件" onerror="this.closest('.page-empty-scene').classList.add('image-missing');this.remove()">
         <div>
           <h3>${type === 'inbox' ? '收件箱还是空的' : '还没有寄出过信'}</h3>
-          <p>${type === 'inbox' ? '还没有人给你寄信，或者给自己写一封吧。' : '把第一封信寄出去，它会沿着邮路抵达另一个人的故乡。'}</p>
-          <button class="btn btn-pri" onclick="_showComposeMail()">${type === 'inbox' ? '写一封信' : '寄出第一封'}</button>
+          <p>${type === 'inbox' ? '收到的用户来信会显示在这里。' : '你发送给其他用户的信会显示在这里。'}</p>
+          <button class="btn btn-pri" onclick="_showComposeMail()">${type === 'inbox' ? '给其他用户写信' : '写第一封信'}</button>
         </div>
       </div>`;
     return;
@@ -123,11 +123,7 @@ function _renderMailList(container, mails, type) {
 
   const dateFmt = (ts) => {
     if (!ts) return '';
-    const d = new Date(ts), now = new Date(), diff = now - d;
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
-    if (diff < 86400000) return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`;
-    return d.toLocaleDateString('zh-CN');
+    return App.relativeTime(ts);
   };
 
   container.innerHTML = mails.map(m => `
@@ -135,8 +131,8 @@ function _renderMailList(container, mails, type) {
       onclick="_showMailDetail('${m.id}', '${type}', ${type === 'inbox' && !m.isRead})">
       <span class="mailbox-avatar">${(type === 'inbox' ? (m.senderUsername || '?') : (m.recipientUsername || '?'))[0]}</span>
       <span class="mailbox-body">
-        <strong>${App._e(type === 'inbox' ? (m.senderUsername || '远方来信') : '寄给 ' + App._e(m.recipientUsername || '远方的谁'))}</strong>
-        <small>${App._e(m.title || '(没有标题)')}</small>
+        <strong>${App._e(type === 'inbox' ? (m.senderUsername || '未知用户') : '发送给 ' + (m.recipientUsername || '未知用户'))}</strong>
+        <small>${App._e(m.title || '无标题')}</small>
         <em>${App._e((m.content || '').slice(0, 60))}</em>
       </span>
       <span class="mailbox-meta">
@@ -157,7 +153,7 @@ async function _showMailDetail(mailId, type, unread = false) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-  overlay.innerHTML = '<div class="modal-pnl paper-panel" style="max-width:520px;"><div class="modal-bd" style="text-align:center;padding:40px;">正在展开信纸……</div></div>';
+  overlay.innerHTML = '<div class="modal-pnl paper-panel" style="max-width:520px;"><div class="modal-bd" style="text-align:center;padding:40px;">正在加载信件…</div></div>';
   document.body.appendChild(overlay);
 
   try {
@@ -171,7 +167,7 @@ async function _showMailDetail(mailId, type, unread = false) {
     }
     const r = await api.getMailDetail(mailId);
     if (!r.ok || !r.data) {
-      overlay.innerHTML = '<div class="modal-pnl paper-panel" style="max-width:400px;"><div class="modal-bd" style="text-align:center;padding:40px;"><p>这封信找不到了。</p><button class="btn btn-sec" onclick="this.closest(\'.modal\').remove()">关上信箱</button></div></div>';
+      overlay.innerHTML = '<div class="modal-pnl paper-panel" style="max-width:400px;"><div class="modal-bd" style="text-align:center;padding:40px;"><p>没有找到这封信。</p><button class="btn btn-sec" onclick="this.closest(\'.modal\').remove()">关闭</button></div></div>';
       return;
     }
     const m = App.normalizeMail(r.data);
@@ -203,21 +199,21 @@ async function _showMailDetail(mailId, type, unread = false) {
     overlay.innerHTML = `
       <div class="modal-pnl paper-panel" style="max-width:520px;">
         <div class="modal-hd">
-          <div><span class="section-kicker">${type === 'inbox' ? 'FROM · ' + App._e(m.senderUsername || '远方') : 'TO · ' + App._e(m.recipientUsername || '远方')}</span>
-          <h3>${App._e(m.title || '一封没有标题的信')}</h3></div>
+          <div><span class="section-kicker">${type === 'inbox' ? 'FROM · ' + App._e(m.senderUsername || '未知用户') : 'TO · ' + App._e(m.recipientUsername || '未知用户')}</span>
+          <h3>${App._e(m.title || '无标题')}</h3></div>
           <button class="modal-cl floating-close" aria-label="关闭" onclick="this.closest('.modal').remove()">×</button>
         </div>
         <div class="modal-meta">${dateFmt(m.sentAt)}</div>
         <div class="modal-bd" style="white-space:pre-wrap;">${App._e(m.content || '')}</div>
         ${attachHtml}
         <div class="modal-ft" style="display:flex;justify-content:space-between;align-items:center;">
-          <button class="btn btn-dng" onclick="_deleteMailConfirm('${m.id}')">删除这封信</button>
-          <button class="btn btn-sec" onclick="this.closest('.modal').remove()">收好信纸</button>
+          <button class="btn btn-dng" onclick="_deleteMailConfirm('${m.id}')">删除信件</button>
+          <button class="btn btn-sec" onclick="this.closest('.modal').remove()">关闭</button>
         </div>
       </div>`;
     overlay.querySelector('.modal-cl')?.focus();
   } catch (e) {
-    overlay.innerHTML = '<div class="modal-pnl paper-panel" style="max-width:400px;"><div class="modal-bd" style="text-align:center;padding:40px;"><p>打开信封时出了点问题。</p><button class="btn btn-sec" onclick="this.closest(\'.modal\').remove()">关上信箱</button></div></div>';
+    overlay.innerHTML = '<div class="modal-pnl paper-panel" style="max-width:400px;"><div class="modal-bd" style="text-align:center;padding:40px;"><p>信件加载失败，请稍后重试。</p><button class="btn btn-sec" onclick="this.closest(\'.modal\').remove()">关闭</button></div></div>';
   }
 }
 
@@ -228,11 +224,11 @@ function _deleteMailConfirm(mailId) {
   if (!overlay) return;
   overlay.innerHTML = `
     <div class="modal-pnl paper-panel" style="max-width:360px;">
-      <div class="modal-hd"><div><h3>丢掉这封信？</h3></div></div>
-      <div class="modal-bd" style="text-align:center;padding:16px;"><p style="color:var(--ink-faint);">丢掉之后，它不会在你这边留下了。</p></div>
+      <div class="modal-hd"><div><h3>删除这封信？</h3></div></div>
+      <div class="modal-bd" style="text-align:center;padding:16px;"><p style="color:var(--ink-faint);">删除后，这封信将不再显示在你的信箱中。</p></div>
       <div class="modal-ft" style="display:flex;gap:8px;justify-content:center;">
-        <button class="btn btn-dng" onclick="_doDeleteMail('${mailId}')">丢掉</button>
-        <button class="btn btn-sec" onclick="this.closest('.modal').remove()">再留一会儿</button>
+        <button class="btn btn-dng" onclick="_doDeleteMail('${mailId}')">确认删除</button>
+        <button class="btn btn-sec" onclick="this.closest('.modal').remove()">取消</button>
       </div>
     </div>`;
 }
@@ -242,12 +238,12 @@ async function _doDeleteMail(mailId) {
     const r = await api.deleteMail(mailId);
     document.querySelector('.modal')?.remove();
     if (r.ok) {
-      App.showToast('信件已经丢掉了');
+      App.showToast('信件已删除');
       _loadMailboxList();
     } else {
-      App.showToast('没丢掉: ' + (r.error || '再试一次'), 3000);
+      App.showToast(App.friendlyError(r.error, '删除失败，请稍后重试'), 3000);
     }
-  } catch (e) { App.showToast('网络不好，再试一次', 3000); }
+  } catch (e) { App.showToast(App.friendlyError(e, '删除失败，请稍后重试'), 3000); }
 }
 
 /* ================ COMPOSE ================ */
@@ -262,19 +258,19 @@ function _showComposeMail() {
   overlay.innerHTML = `
     <div class="modal-pnl paper-panel" style="max-width:480px;">
       <div class="modal-hd">
-        <div><span class="section-kicker">NEW LETTER</span><h3>✉ 写一封信</h3></div>
+        <div><span class="section-kicker">NEW LETTER</span><h3>给其他用户写信</h3></div>
         <button class="modal-cl floating-close" aria-label="关闭" onclick="this.closest('.modal').remove()">×</button>
       </div>
       <div class="mailbox-compose-form">
-        <label>收件人是谁？
+        <label>收件人
           <div class="mailbox-search-wrap">
-            <input class="inp" id="compose-recipient" placeholder="输入用户名搜索……" autocomplete="off"
+            <input class="inp" id="compose-recipient" placeholder="输入用户名搜索" autocomplete="off"
               oninput="_searchRecipient(this.value)">
             <div class="mailbox-search-drop" id="compose-search-drop" style="display:none;"></div>
           </div>
         </label>
-        <label>标题（可选）<input class="inp" id="compose-title" placeholder="一句话标题"></label>
-        <label>想说些什么？<textarea class="inp inp-ta" id="compose-content" rows="5" placeholder="写下你想说的话……"></textarea></label>
+        <label>标题（可选）<input class="inp" id="compose-title" placeholder="输入标题"></label>
+        <label>正文<textarea class="inp inp-ta" id="compose-content" rows="5" placeholder="输入信件内容"></textarea></label>
         <label>附带明信片（可选）
           <select class="inp" id="compose-postcard">
             <option value="">不附带</option>
@@ -288,7 +284,7 @@ function _showComposeMail() {
           </select>
         </label>
         <div class="setting-actions">
-          <button class="btn btn-pri" onclick="_doSendMail()" id="compose-btn">寄出这封信</button>
+          <button class="btn btn-pri" onclick="_doSendMail()" id="compose-btn">发送信件</button>
           <span class="st" id="compose-status" aria-live="polite">&nbsp;</span>
         </div>
       </div>
@@ -309,7 +305,7 @@ async function _searchRecipient(query) {
     try {
       const r = await api.lookupUsers(query.trim());
       if (!r.ok || !r.data || !r.data.users?.length) {
-        drop.innerHTML = '<div class="mailbox-search-item" style="color:var(--ink-faint);">没有找到这个用户</div>';
+        drop.innerHTML = '<div class="mailbox-search-item" style="color:var(--ink-faint);">没有找到匹配的用户</div>';
         drop.style.display = 'block';
         return;
       }
@@ -319,7 +315,10 @@ async function _searchRecipient(query) {
         </button>
       `).join('');
       drop.style.display = 'block';
-    } catch (e) { /* silent */ }
+    } catch (e) {
+      drop.innerHTML = '<div class="mailbox-search-item" style="color:var(--ink-faint);">搜索失败，请稍后重试。</div>';
+      drop.style.display = 'block';
+    }
   }, 300);
 }
 
@@ -340,24 +339,24 @@ async function _doSendMail() {
   const status = document.getElementById('compose-status');
   const u = recipient?.value?.trim();
   const c = content?.value?.trim();
-  if (!u) { if (status) status.textContent = '写上收件人的名字吧'; return; }
-  if (!c) { if (status) status.textContent = '总得写点什么吧'; return; }
+  if (!u) { if (status) status.textContent = '请输入收件人用户名'; return; }
+  if (!c) { if (status) status.textContent = '请输入信件正文'; return; }
   if (btn) btn.disabled = true;
-  if (status) status.textContent = '正在寄出……';
+  if (status) status.textContent = '正在发送…';
   try {
     const postcardId = postcard?.value ? Number(String(postcard.value).replace(/^pc-/, '')) : null;
     const letterId = letter?.value ? Number(String(letter.value).replace(/^ltr-/, '')) : null;
     const r = await api.sendMail(u, title?.value?.trim() || '', c, postcardId, letterId);
     if (r.ok) {
       document.querySelector('.modal')?.remove();
-      App.showToast('信已寄出，正在邮路上。');
+      App.showToast('信件已发送');
       _mboxTab = 'outbox';
       const page = document.getElementById('page-mailbox');
       if (page) _renderMailboxCore(page);
     } else {
-      if (status) status.textContent = r.error || '没有寄出去';
+      if (status) status.textContent = App.friendlyError(r.error, '发送失败，请稍后重试');
     }
-  } catch (e) { if (status) status.textContent = '网络不好，再试一次'; }
+  } catch (e) { if (status) status.textContent = App.friendlyError(e, '发送失败，请稍后重试'); }
   if (btn) btn.disabled = false;
 }
 

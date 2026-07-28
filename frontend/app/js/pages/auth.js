@@ -18,23 +18,23 @@ function renderAuthPage(mode = 'login') {
         <div class="auth-heading">
           <span class="section-kicker">A LETTER TO THE PAST</span>
           <h2>故乡来信</h2>
-          <p>${isLogin ? '欢迎回到这张熟悉的书桌。' : '从一封写给过去的信开始。'}</p>
+          <p>${isLogin ? '登录后继续你的故乡旅程。' : '创建账户，开始写给过去。'}</p>
         </div>
         <div class="auth-tabs" role="tablist" aria-label="账户方式">
           <button class="auth-tab ${isLogin ? 'active' : ''}" role="tab" aria-selected="${isLogin}" onclick="renderAuthPage('login')">登录</button>
           <button class="auth-tab ${!isLogin ? 'active' : ''}" role="tab" aria-selected="${!isLogin}" onclick="renderAuthPage('register')">注册</button>
         </div>
         <form class="auth-form" onsubmit="handleAuth(event, '${mode}')">
-          <label class="auth-field">你的名字
-            <input type="text" id="auth-username" class="inp" placeholder="写下用户名" required minlength="2" maxlength="32" autocomplete="username">
+          <label class="auth-field">用户名
+            <input type="text" id="auth-username" class="inp" placeholder="2–32 个字符" required minlength="2" maxlength="32" autocomplete="username">
           </label>
-          <label class="auth-field">信箱暗号
+          <label class="auth-field">密码
             <input type="password" id="auth-password" class="inp" placeholder="至少 4 个字符" required minlength="4" autocomplete="${isLogin ? 'current-password' : 'new-password'}">
           </label>
           <div class="auth-err" id="auth-error" role="alert" hidden></div>
-          <button type="submit" class="auth-submit" id="auth-submit">${isLogin ? '打开我的信箱' : '寄出第一封信'}</button>
+          <button type="submit" class="auth-submit" id="auth-submit">${isLogin ? '登录' : '创建账户'}</button>
         </form>
-        <button class="auth-skip" type="button" onclick="skipAuth()">先看看这间温暖的房间 →</button>
+        <button class="auth-skip" type="button" onclick="skipAuth()">先以访客身份浏览 →</button>
       </section>
     </div>`;
 }
@@ -55,18 +55,18 @@ async function handleAuth(event, mode) {
   const button = document.getElementById('auth-submit');
   const username = document.getElementById('auth-username').value.trim();
   const password = document.getElementById('auth-password').value;
-  const original = mode === 'login' ? '打开我的信箱' : '寄出第一封信';
+  const original = mode === 'login' ? '登录' : '创建账户';
   document.getElementById('auth-error').hidden = true;
   button.disabled = true;
-  button.textContent = mode === 'login' ? '正在开锁…' : '正在登记…';
+  button.textContent = mode === 'login' ? '正在登录…' : '正在创建…';
   try {
     const response = await api.auth(mode === 'register' ? 'register' : 'login', username, password);
-    if (!response.ok || !response.data) throw new Error(response.detail || response.error || '操作失败，请重试');
+    if (!response.ok || !response.data) throw new Error(response.detail || response.error || '操作失败，请稍后重试');
     Auth.setToken(response.data.token);
     Auth.setUser({ id: response.data.user_id, username });
     await showAppAfterAuth();
   } catch (error) {
-    showAuthError(error.message || '网络错误，请检查后端是否运行');
+    showAuthError(App.friendlyError(error, mode === 'login' ? '登录失败，请稍后重试' : '账户创建失败，请稍后重试'));
   } finally {
     button.disabled = false;
     button.textContent = original;

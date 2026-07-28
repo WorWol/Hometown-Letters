@@ -19,8 +19,16 @@ let _stampApplied = false;   // 邮戳是否已贴
 let _generation = 0;          // 递增计数器，用于拦截过期异步操作
 let _draftTimer = null;
 let _activeDraftKey = null;
+let _referenceImageFile = null;
+let _referenceImageUrl = '';
+let _imageStyles = null;
+let _defaultImageStyleId = 'pixel_16bit';
+let _imageStylesPromise = null;
+let _styleSavePromise = Promise.resolve(true);
 
 const LETTER_DRAFT_VERSION = 1;
+const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_REFERENCE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 function _letterDraftKey() {
   const user = typeof Auth !== 'undefined' ? Auth.getUser() : null;
@@ -42,11 +50,7 @@ function _readLetterDraft() {
 }
 
 function _draftTimeLabel(timestamp) {
-  const elapsed = Date.now() - Number(timestamp || 0);
-  if (!timestamp || elapsed < 60000) return '刚刚';
-  if (elapsed < 3600000) return `${Math.max(1, Math.floor(elapsed / 60000))} 分钟前`;
-  if (elapsed < 86400000) return `${Math.floor(elapsed / 3600000)} 小时前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN');
+  return App.relativeTime(timestamp) || '刚刚';
 }
 
 function _setDraftStatus(message, hasDraft = true) {
@@ -77,11 +81,11 @@ function saveLetterDraft({ silent = false } = {}) {
     const storageKey = _activeDraftKey || _letterDraftKey();
     if (hasContent) localStorage.setItem(storageKey, JSON.stringify(draft));
     else localStorage.removeItem(storageKey);
-    if (!silent) _setDraftStatus(hasContent ? '草稿已自动保存 · 刚刚' : '草稿会自动保存', hasContent);
+    if (!silent) _setDraftStatus(hasContent ? '草稿已保存 · 刚刚' : '草稿自动保存', hasContent);
     return true;
   } catch (error) {
     console.warn('[write-letter] 无法保存本地草稿', error);
-    if (!silent) _setDraftStatus('草稿保存失败，请暂时不要关闭页面', hasContent);
+    if (!silent) _setDraftStatus('草稿保存失败，请勿关闭页面', hasContent);
     return false;
   }
 }
@@ -96,19 +100,20 @@ function _scheduleLetterDraftSave() {
     document.getElementById('env-mood')?.value.trim()
   );
   if (!saved) {
-    _setDraftStatus('草稿保存失败，请暂时不要关闭页面', hasContent);
+    _setDraftStatus('草稿保存失败，请勿关闭页面', hasContent);
     return;
   }
-  _setDraftStatus(hasContent ? '草稿已保存' : '草稿会自动保存', hasContent);
+  _setDraftStatus(hasContent ? '草稿已保存' : '草稿自动保存', hasContent);
   _draftTimer = setTimeout(() => {
     _draftTimer = null;
-    _setDraftStatus(hasContent ? '草稿已自动保存 · 刚刚' : '草稿会自动保存', hasContent);
+    _setDraftStatus(hasContent ? '草稿已保存 · 刚刚' : '草稿自动保存', hasContent);
   }, 450);
 }
 
 function clearLetterDraft() {
   if (!window.confirm('确定清空这封尚未寄出的草稿吗？')) return;
   _clearStoredLetterDraft();
+  removeLetterReferenceImage({ silent: true });
   ['env-textarea', 'env-place', 'env-mood'].forEach(id => {
     const field = document.getElementById(id);
     if (field) field.value = '';
@@ -120,7 +125,7 @@ function clearLetterDraft() {
 function _restoreLetterDraft() {
   const draft = _readLetterDraft();
   if (!draft) {
-    _setDraftStatus('草稿会自动保存', false);
+    _setDraftStatus('草稿自动保存', false);
     return false;
   }
   const fields = [
@@ -132,7 +137,7 @@ function _restoreLetterDraft() {
     const field = document.getElementById(id);
     if (field) field.value = value || '';
   });
-  _setDraftStatus(`已恢复${_draftTimeLabel(draft.updatedAt)}保存的草稿`, true);
+  _setDraftStatus(`已恢复${_draftTimeLabel(draft.updatedAt)}的草稿`, true);
   return true;
 }
 
@@ -141,6 +146,156 @@ function _clearStoredLetterDraft() {
   try { localStorage.removeItem(_activeDraftKey || _letterDraftKey()); } catch (error) {
     console.warn('[write-letter] 无法清除本地草稿', error);
   }
+}
+
+function _syncReferenceImagePreview() {
+  const preview = document.getElementById('env-reference-preview');
+  const empty = document.getElementById('env-reference-empty');
+  const box = document.getElementById('env-reference-box');
+  const removeButton = document.getElementById('env-reference-remove');
+  const name = document.getElementById('env-reference-name');
+  const hint = document.getElementById('env-reference-hint');
+  const hasImage = Boolean(_referenceImageFile && _referenceImageUrl);
+
+  if (preview) {
+    preview.hidden = !hasImage;
+    if (hasImage) preview.src = _referenceImageUrl;
+    else preview.removeAttribute('src');
+  }
+  if (empty) empty.hidden = hasImage;
+  if (box) box.classList.toggle('has-image', hasImage);
+  if (removeButton) removeButton.hidden = !hasImage;
+  if (name) name.textContent = hasImage ? _referenceImageFile.name : '选择参考图片';
+  if (hint) {
+    hint.textContent = hasImage
+      ? '生成明信片时会参考这张图片'
+      : '未选择时，将根据地点提示生成画面';
+  }
+}
+
+function chooseLetterReferenceImage(event) {
+  const input = event?.target;
+  const file = input?.files?.[0];
+  if (!file) return;
+
+  if (!ALLOWED_REFERENCE_IMAGE_TYPES.has(file.type)) {
+    App.showToast('参考图片仅支持 JPEG、PNG 或 WebP', 3500);
+    input.value = '';
+    return;
+  }
+  if (file.size > MAX_REFERENCE_IMAGE_BYTES) {
+    App.showToast('参考图片不能超过 10 MB', 3500);
+    input.value = '';
+    return;
+  }
+
+  if (_referenceImageUrl) URL.revokeObjectURL(_referenceImageUrl);
+  _referenceImageFile = file;
+  _referenceImageUrl = URL.createObjectURL(file);
+  _syncReferenceImagePreview();
+}
+
+function removeLetterReferenceImage({ silent = false } = {}) {
+  if (_referenceImageUrl) URL.revokeObjectURL(_referenceImageUrl);
+  _referenceImageFile = null;
+  _referenceImageUrl = '';
+  const input = document.getElementById('env-reference-input');
+  if (input) input.value = '';
+  _syncReferenceImagePreview();
+  if (!silent) App.showToast('参考图片已移除，将根据地点提示生成画面', 2800);
+}
+
+function _syncImageStyleOptions() {
+  const select = document.getElementById('env-image-style');
+  const status = document.getElementById('env-style-status');
+  if (!select || !_imageStyles?.length) return;
+
+  const availableIds = new Set(_imageStyles.map(style => style.id));
+  const fallbackId = availableIds.has(_defaultImageStyleId)
+    ? _defaultImageStyleId
+    : _imageStyles[0].id;
+  const selectedId = availableIds.has(App.state.imageStyle)
+    ? App.state.imageStyle
+    : fallbackId;
+
+  App.state.imageStyle = selectedId;
+  select.innerHTML = _imageStyles.map(style =>
+    `<option value="${App._e(style.id)}"${style.id === selectedId ? ' selected' : ''}>${App._e(style.label)}</option>`
+  ).join('');
+  select.disabled = false;
+  if (status) status.textContent = '选择后自动保存';
+}
+
+async function _loadImageStyles() {
+  if (_imageStyles?.length) {
+    _syncImageStyleOptions();
+    return _imageStyles;
+  }
+  if (!_imageStylesPromise) {
+    _imageStylesPromise = api.getImageStyles()
+      .then(response => {
+        if (!response?.ok || !Array.isArray(response.data?.styles) || !response.data.styles.length) {
+          throw new Error(response?.error || '当前没有可用画风');
+        }
+        _imageStyles = response.data.styles.filter(style => style?.id && style?.label);
+        if (!_imageStyles.length) throw new Error('当前没有可用画风');
+        _defaultImageStyleId = response.data.defaultStyleId || 'pixel_16bit';
+        return _imageStyles;
+      })
+      .catch(error => {
+        _imageStylesPromise = null;
+        throw error;
+      });
+  }
+
+  try {
+    await _imageStylesPromise;
+    _syncImageStyleOptions();
+    return _imageStyles;
+  } catch (error) {
+    const select = document.getElementById('env-image-style');
+    const status = document.getElementById('env-style-status');
+    const needsLogin = error?.status === 401 || error?.message === '未登录';
+    if (select) {
+      select.innerHTML = `<option>${needsLogin ? '登录后可选择' : '画风加载失败'}</option>`;
+      select.disabled = true;
+    }
+    if (status) {
+      status.textContent = needsLogin
+        ? '登录后可以选择并保存画风'
+        : App.friendlyError(error, '画风加载失败，请稍后重试');
+    }
+    return [];
+  }
+}
+
+function saveLetterImageStyle(styleId) {
+  const select = document.getElementById('env-image-style');
+  const status = document.getElementById('env-style-status');
+  const previousId = App.state.imageStyle || _defaultImageStyleId;
+  if (!styleId || styleId === previousId) return _styleSavePromise;
+
+  if (select) select.disabled = true;
+  if (status) status.textContent = '正在保存…';
+
+  _styleSavePromise = api.setImageStyle(styleId)
+    .then(response => {
+      if (!response?.ok) throw new Error(response?.error || '画风保存失败');
+      App.state.imageStyle = response.data?.imageStyle || styleId;
+      if (status?.isConnected) status.textContent = '画风已保存';
+      return true;
+    })
+    .catch(error => {
+      if (select?.isConnected) select.value = previousId;
+      if (status?.isConnected) status.textContent = '保存失败，已恢复原选择';
+      App.showToast(App.friendlyError(error, '画风保存失败，请稍后重试'), 3800);
+      return false;
+    })
+    .finally(() => {
+      if (select?.isConnected) select.disabled = false;
+    });
+
+  return _styleSavePromise;
 }
 
 /* ================ RENDER ================ */
@@ -157,12 +312,35 @@ function renderWriteLetter() {
       <section class="letter-work-area">
         <div class="env-letter-card" id="env-letter-card">
           <div class="letter-date">TO MY PAST SELF · 第 ${App.state.currentDay || 0} 天</div>
-          <textarea class="env-textarea" id="env-textarea" placeholder="写一封给过去自己的信……" rows="9" maxlength="2000"></textarea>
+          <div class="env-writing-row">
+            <textarea class="env-textarea" id="env-textarea" placeholder="写下想对过去说的话…" rows="9" maxlength="2000"></textarea>
+            <aside class="env-reference-card" aria-label="明信片参考图片与画风">
+              <span class="env-reference-kicker">REFERENCE IMAGE</span>
+              <div class="env-reference-box" id="env-reference-box">
+                <input type="file" id="env-reference-input" accept="image/jpeg,image/png,image/webp" onchange="chooseLetterReferenceImage(event)" hidden>
+                <button type="button" class="env-reference-trigger" onclick="document.getElementById('env-reference-input').click()" aria-label="选择参考图片">
+                  <img id="env-reference-preview" alt="已选择的参考图片预览" hidden>
+                  <span class="env-reference-empty" id="env-reference-empty" aria-hidden="true"><b>＋</b><small>选择图片</small></span>
+                </button>
+                <span class="env-reference-pin" aria-hidden="true"></span>
+              </div>
+              <strong id="env-reference-name">选择参考图片</strong>
+              <p id="env-reference-hint">未选择时，将根据地点提示生成画面</p>
+              <button type="button" class="env-reference-remove" id="env-reference-remove" onclick="removeLetterReferenceImage()" hidden>移除图片</button>
+              <label class="env-style-picker" for="env-image-style">
+                <span>明信片画风</span>
+                <select id="env-image-style" onchange="saveLetterImageStyle(this.value)" disabled>
+                  <option>正在加载画风…</option>
+                </select>
+                <small id="env-style-status" aria-live="polite">正在加载可用画风…</small>
+              </label>
+            </aside>
+          </div>
           <div class="env-extra"><div class="env-form-row">
-            <label class="env-form-group">推荐地点（可选）<input class="env-inp" id="env-place" placeholder="河堤 / 学校后门 / 旧市场"></label>
-            <label class="env-form-group">希望的情绪（可选）<input class="env-inp" id="env-mood" placeholder="平静 / 鼓起勇气"></label>
+            <label class="env-form-group">地点提示（可选）<input class="env-inp" id="env-place" placeholder="例如：河堤、学校后门、旧市场"></label>
+            <label class="env-form-group">情绪提示（可选）<input class="env-inp" id="env-mood" placeholder="例如：平静、怀念、鼓起勇气"></label>
           </div></div>
-          <div class="env-draft-bar"><span id="env-draft-status" aria-live="polite">草稿会自动保存</span><button type="button" id="env-clear-draft" class="env-clear-draft" onclick="clearLetterDraft()" hidden>清空草稿</button></div>
+          <div class="env-draft-bar"><span id="env-draft-status" aria-live="polite">草稿自动保存</span><button type="button" id="env-clear-draft" class="env-clear-draft" onclick="clearLetterDraft()" hidden>清空草稿</button></div>
           <div class="env-step-btns" id="env-step-btns"></div>
           <div class="env-status" id="env-status" aria-live="polite">&nbsp;</div>
         </div>
@@ -178,8 +356,8 @@ function renderWriteLetter() {
         </div>
       </section>
       <aside class="write-side">
-        <section class="dark-panel delivery-note"><span class="section-kicker">DELIVERY GUIDE</span><h3>信会怎样抵达？</h3><ol><li>把今天写进信纸</li><li>装进信封并贴好邮票</li><li>投进邮箱，等待明信片回来</li></ol><div class="env-mailbox" id="env-mailbox"><img src="assets/workbench/letters/mailbox.png" alt="打开的乡间邮箱"></div></section>
-        <section class="paper-panel recent-letters"><div class="panel-heading"><div><span class="section-kicker">RECENT LETTERS</span><h3>最近写过的信</h3></div></div><div class="env-recent" id="env-recent">${ls.length ? ls.map(_renderRecentItem).join('') : '<div class="rl-empty">还没有寄出过信。第一封会很特别。</div>'}</div></section>
+        <section class="dark-panel delivery-note"><span class="section-kicker">DELIVERY GUIDE</span><h3>投递步骤</h3><ol><li>写下想说的话</li><li>装进信封并贴上邮票</li><li>投递后生成明信片</li></ol><div class="env-mailbox" id="env-mailbox"><img src="assets/workbench/letters/mailbox.png" alt="打开的乡间邮箱"></div></section>
+        <section class="paper-panel recent-letters"><div class="panel-heading"><div><span class="section-kicker">RECENT LETTERS</span><h3>最近投递的信</h3></div></div><div class="env-recent" id="env-recent">${ls.length ? ls.map(_renderRecentItem).join('') : '<div class="rl-empty">还没有投递过信。</div>'}</div></section>
       </aside>
     </div>
   `;
@@ -190,6 +368,8 @@ function renderWriteLetter() {
   _generation++;  // 标记新一轮渲染，废弃之前的异步操作
   _renderButtons();
   _restoreLetterDraft();
+  _syncReferenceImagePreview();
+  _loadImageStyles();
   ['env-textarea', 'env-place', 'env-mood'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', _scheduleLetterDraftSave);
   });
@@ -224,7 +404,7 @@ function _renderButtons() {
         if (!_stampApplied) {
           envBtns.innerHTML = `
             <button class="env-btn env-btn-stamp" id="btn-stamp" onclick="applyStamp()">
-              贴邮戳
+              贴上邮票
             </button>`;
         } else {
           envBtns.innerHTML = `
@@ -284,7 +464,7 @@ function sealLetter() {
   if (envBtns) envBtns.style.display = 'none';
 
   const envStatus = document.getElementById('env-env-status');
-  if (envStatus) { envStatus.style.display = ''; envStatus.textContent = '正在装进信封……'; }
+  if (envStatus) { envStatus.style.display = ''; envStatus.textContent = '正在装进信封…'; }
 
   // 0.6s 动画后进入 STAMPED
   setTimeout(() => {
@@ -295,7 +475,7 @@ function sealLetter() {
       scene.classList.remove('sealing');
       scene.classList.add('stamped');
     }
-    if (envStatus) envStatus.textContent = '给信封贴上邮戳吧';
+    if (envStatus) envStatus.textContent = '请给信封贴上邮票';
 
     // 显示信封上的按钮
     _renderButtons();
@@ -316,7 +496,7 @@ function applyStamp() {
   if (scene) scene.classList.add('stamp-applied');
 
   const status = document.getElementById('env-env-status');
-  if (status) status.textContent = '邮戳已贴好！';
+  if (status) status.textContent = '邮票已贴好';
 
   _renderButtons();
   _busy = false;
@@ -326,6 +506,9 @@ function applyStamp() {
 /* ================ STEP 3→4: 投递 ================ */
 
 async function deliverLetter() {
+  if (_busy || _curStep !== LetterStep.STAMPED || !_stampApplied) return;
+
+  await _styleSavePromise;
   if (_busy || _curStep !== LetterStep.STAMPED || !_stampApplied) return;
 
   const ta = document.getElementById('env-textarea');
@@ -343,7 +526,7 @@ async function deliverLetter() {
     scene.classList.remove('stamped');
     scene.classList.add('sending');
   }
-  if (status) { status.style.display = ''; status.textContent = '投递中……'; }
+  if (status) { status.style.display = ''; status.textContent = '正在投递并生成明信片…'; }
 
   // 信封按钮隐藏
   const envBtns = document.getElementById('env-env-btns');
@@ -352,7 +535,11 @@ async function deliverLetter() {
   // Start API call
   const place = document.getElementById('env-place');
   const mood = document.getElementById('env-mood');
-  const sendFn = api.sendLetter(text, place ? place.value.trim() : '', mood ? mood.value.trim() : '');
+  const placeHint = place ? place.value.trim() : '';
+  const moodHint = mood ? mood.value.trim() : '';
+  const sendFn = _referenceImageFile
+    ? api.sendLetterWithImage(text, placeHint, moodHint, _referenceImageFile)
+    : api.sendLetter(text, placeHint, moodHint);
   const apiPromise = sendFn.catch(e => ({ ok: false, error: e.message || '网络错误' }));
 
   // Wait for envelope fade, then fly animation
@@ -373,8 +560,9 @@ async function deliverLetter() {
     // → SUCCESS
     _curStep = LetterStep.SUCCESS;
     _clearStoredLetterDraft();
+    removeLetterReferenceImage({ silent: true });
     if (scene) scene.classList.add('success');
-    if (status) status.textContent = '投递成功！';
+    if (status) status.textContent = '投递成功，明信片已生成';
 
     try {
       const sr = await api.getState();
@@ -397,9 +585,9 @@ async function deliverLetter() {
     _curStep = LetterStep.ERROR;
     if (scene) scene.classList.add('error');
 
-    const errMsg = apiResult ? (apiResult.error || '未能寄出') : '网络错误';
+    const errMsg = App.friendlyError(apiResult ? (apiResult.error || '投递失败') : '网络错误', '投递失败，请稍后重试');
     if (status) status.textContent = errMsg;
-    App.showToast('寄信失败：' + errMsg, 4000);
+    App.showToast(errMsg, 4000);
 
     if (_errorTimer) clearTimeout(_errorTimer);
     const _savedGen = gen;

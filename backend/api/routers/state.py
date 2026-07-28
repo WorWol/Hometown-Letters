@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.dependencies import get_current_user
 from db.database import get_db
-from db.models import Hometown, Letter, LetterLike, Memory, PastSelfProfile, Postcard, User
+from db.models import Hometown, Letter, LetterLike, Memory, PastSelfProfile, Postcard, Profile, User
 from services.style_service import get_user_image_style
 from .common import postcard_dict
 
@@ -53,6 +53,9 @@ async def get_state(user: User = Depends(get_current_user), db: AsyncSession = D
     ]
 
     image_style = await get_user_image_style(db, user.id)
+    account_profile = await db.scalar(select(Profile).where(Profile.user_id == user.id))
+    profile_data = account_profile.data if account_profile and isinstance(account_profile.data, dict) else {}
+    onboarding_version = profile_data.get("onboarding_version")
 
     profile = await db.scalar(select(PastSelfProfile).where(PastSelfProfile.user_id == user.id))
     past_self = {
@@ -90,4 +93,5 @@ async def get_state(user: User = Depends(get_current_user), db: AsyncSession = D
         "memories": memories, "postcards": postcards, "past_self_profile": past_self,
         "likedItems": liked_items,
         "imageStyle": image_style,
+        "onboardingVersion": onboarding_version,
     }}

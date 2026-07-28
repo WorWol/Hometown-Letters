@@ -52,8 +52,9 @@ const api = {
       throw error;
     }
 
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
     const headers = {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       'Authorization': `Bearer ${token}`,
       ...options.headers,
     };
@@ -92,6 +93,36 @@ const api = {
     return this._fetchAuth('/api/letter/send', {
       method: 'POST',
       body: JSON.stringify({ text, place_hint: placeHint, mood_hint: moodHint }),
+    });
+  },
+
+  async sendLetterWithImage(text, placeHint = '', moodHint = '', image) {
+    const form = new FormData();
+    form.append('text', text);
+    form.append('place_hint', placeHint);
+    form.append('mood_hint', moodHint);
+    form.append('image', image);
+    return this._fetchAuth('/api/letter/send-with-image', {
+      method: 'POST',
+      body: form,
+    });
+  },
+
+  async getImageStyles() {
+    return this._fetchAuth('/api/image-styles');
+  },
+
+  async setImageStyle(styleId) {
+    return this._fetchAuth('/api/profile/image-style', {
+      method: 'POST',
+      body: JSON.stringify({ style_id: styleId }),
+    });
+  },
+
+  async setOnboardingVersion(version) {
+    return this._fetchAuth('/api/profile/onboarding', {
+      method: 'POST',
+      body: JSON.stringify({ version }),
     });
   },
 

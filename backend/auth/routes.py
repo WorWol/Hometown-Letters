@@ -12,7 +12,7 @@ from auth.dependencies import get_current_user
 from auth.security import create_token, hash_password, verify_password
 from config import settings
 from db.database import get_db
-from db.models import SystemEvent, User
+from db.models import Profile, SystemEvent, User
 from services.persistent_rate_limiter import check_login_failure, check_registration, clear_login_failures
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -84,6 +84,7 @@ async def register(request: Request, body: AuthRequest, db: AsyncSession = Depen
     )
     db.add(user)
     await db.flush()
+    db.add(Profile(user_id=user.id, data={"onboarding_version": 0}))
     db.add(SystemEvent(
         level="info",
         event_type="user_registered",

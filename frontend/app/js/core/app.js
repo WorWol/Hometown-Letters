@@ -11,6 +11,8 @@ const App = {
     memories: [],
     pastSelfProfile: {},
     likedItems: [],
+    imageStyle: null,
+    onboardingVersion: null,
   },
 
   currentPage: 'game',
@@ -27,6 +29,7 @@ const App = {
       if (Auth.isLoggedIn()) console.warn('[app] 无法获取状态', error);
     }
     this.navigate(this.currentPage);
+    window.Onboarding?.maybeStart();
   },
 
   getMediaUrl(valueOrRecord) {
@@ -78,6 +81,8 @@ const App = {
       currentDay: data.current_day ?? data.currentDay ?? this.state.currentDay ?? 0,
       pastSelfProfile: data.past_self_profile ?? data.pastSelfProfile ?? this.state.pastSelfProfile ?? {},
       likedItems: Array.isArray(likedRaw) ? likedRaw.map(item => this.normalizeCommunityItem(item)) : [],
+      imageStyle: data.imageStyle ?? data.image_style ?? this.state.imageStyle ?? null,
+      onboardingVersion: data.onboardingVersion ?? data.onboarding_version ?? null,
       postcards,
       letters: Array.isArray(data.letters) ? data.letters : (this.state.letters || []),
       memories: Array.isArray(data.memories) ? data.memories : (this.state.memories || []),
@@ -104,6 +109,38 @@ const App = {
       toast.classList.add('leaving');
       setTimeout(() => toast.remove(), 260);
     }, duration);
+  },
+
+  friendlyError(error, fallback = '操作失败，请稍后重试') {
+    const status = Number(error?.status || 0);
+    const raw = typeof error === 'string'
+      ? error
+      : String(error?.detail || error?.error || error?.message || '').trim();
+    if (status === 401 || raw === '未登录' || raw.includes('认证令牌')) return '登录已失效，请重新登录';
+    if (status === 403 || raw.includes('无权')) return '你没有权限执行此操作';
+    if (raw.includes('不能给自己发信')) return '不能给自己发送信件';
+    if (raw.includes('收件人不存在')) return '没有找到收件人，请检查用户名';
+    if (status === 404 || raw.includes('不存在')) return '没有找到相关内容';
+    if (status === 409 || raw.includes('用户名已存在')) return raw || '内容发生冲突，请检查后重试';
+    if (status === 413 || raw.includes('不能超过')) return raw || '文件过大，请选择较小的文件';
+    if (status === 415 || raw.includes('仅支持') || raw.includes('不支持')) return raw || '文件格式不受支持';
+    if (status === 422) return raw && !raw.startsWith('HTTP ') ? raw : '输入内容有误，请检查后重试';
+    if (status === 429 || raw.includes('过于频繁') || raw.includes('最多生成')) return raw || '操作过于频繁，请稍后重试';
+    if (status >= 500 || /^HTTP \d+/i.test(raw) || /^[A-Za-z]+(?:Error|Exception):/.test(raw)) return fallback;
+    if (raw === '网络错误' || raw.includes('Failed to fetch') || raw.includes('NetworkError')) return '网络连接失败，请稍后重试';
+    return raw || fallback;
+  },
+
+  relativeTime(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '';
+    const elapsed = Math.max(0, Date.now() - date.getTime());
+    if (elapsed < 60000) return '刚刚';
+    if (elapsed < 3600000) return `${Math.max(1, Math.floor(elapsed / 60000))} 分钟前`;
+    if (elapsed < 86400000) return `${Math.floor(elapsed / 3600000)} 小时前`;
+    if (elapsed < 604800000) return `${Math.floor(elapsed / 86400000)} 天前`;
+    return date.toLocaleDateString('zh-CN');
   },
 
   _imgGradient(place, mood) {
@@ -138,7 +175,7 @@ const App = {
     return `<div class="media-frame${compact}${state}" style="--media-fallback:${this._imgGradient(pc.place, pc.mood)}">
       ${imageUrl ? `<img src="${this._e(imageUrl)}" alt="${place}的明信片画面" loading="lazy" draggable="false" data-no-visual-search="true" onload="App.handleMediaLoad(this)" onerror="App.handleMediaError(this)">` : ''}
       <div class="media-fallback" aria-hidden="${imageUrl ? 'true' : 'false'}">
-        <span class="media-fallback-mark">□</span><strong>画面暂缺</strong><small>${place}${mood ? ` · ${mood}` : ''}</small>
+        <span class="media-fallback-mark">□</span><strong>图片暂不可用</strong><small>${place}${mood ? ` · ${mood}` : ''}</small>
       </div>
     </div>`;
   },
@@ -157,7 +194,7 @@ const App = {
     return `<div class="media-frame background-media${compact}${state}" style="--media-fallback:${fallback};${background}">
       ${imageUrl ? `<img class="media-probe" src="${this._e(imageUrl)}" alt="" aria-hidden="true" loading="lazy" draggable="false" data-no-visual-search="true" onload="App.handleMediaLoad(this)" onerror="App.handleMediaError(this)">` : ''}
       <div class="media-fallback" aria-hidden="${imageUrl ? 'true' : 'false'}">
-        <span class="media-fallback-mark">□</span><strong>画面暂缺</strong><small>${place}${mood ? ` · ${mood}` : ''}</small>
+        <span class="media-fallback-mark">□</span><strong>图片暂不可用</strong><small>${place}${mood ? ` · ${mood}` : ''}</small>
       </div>
     </div>`;
   },
@@ -180,13 +217,13 @@ function enlargePostcardImage(source) {
   overlay.className = 'image-lightbox';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-label', '明信片放大预览');
+  overlay.setAttribute('aria-label', '明信片图片预览');
   overlay.tabIndex = -1;
 
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
   closeButton.className = 'lightbox-close';
-  closeButton.setAttribute('aria-label', '缩小图片');
+  closeButton.setAttribute('aria-label', '关闭图片预览');
   closeButton.textContent = '×';
 
   const clone = source.cloneNode(true);

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#2d1b12">
   <title>故乡来信 · Hometown Letters</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/zpix@3.1.1/dist/Zpix.min.css">
-  <link rel="stylesheet" href="css/style.css?v=20260719-write-sidebar2">
+  <link rel="stylesheet" href="css/style.css?v=20260727-copy-review">
 </head>
 <body class="workbench">
   <div class="room-backdrop" aria-hidden="true"></div>
@@ -18,7 +18,7 @@
 
   <div id="app" class="workbench-shell">
     <aside class="side-rail" aria-label="故乡来信主导航">
-      <button class="rail-brand" onclick="App.navigate('game')" title="回到桌面">
+      <button class="rail-brand" onclick="App.navigate('game')" title="返回桌面">
         <span class="brand-mark">乡</span>
         <span class="brand-copy"><strong>故乡来信</strong><small>Hometown Letters</small></span>
       </button>
@@ -53,7 +53,7 @@
         <div class="workspace-heading">
           <div class="workspace-eyebrow" id="workspace-eyebrow">DESKTOP · 暖灯已亮</div>
           <h1 id="workspace-title">桌上的来信</h1>
-          <p id="workspace-subtitle">把今天轻轻放下，也听一听过去的回声。</p>
+          <p id="workspace-subtitle">查看旅程、明信片和最近记录。</p>
         </div>
         <div class="workspace-status" aria-label="当前旅程状态">
           <div><span>旅程</span><strong id="shell-day">第 0 天</strong></div>
@@ -77,18 +77,19 @@
 
   <!-- 关键路径：先加载 auth/api/app -->
   <script src="js/core/auth.js?v=20260715-ui2"></script>
-  <script src="js/core/api.js?v=20260720-same-origin"></script>
-  <script src="js/core/app.js?v=20260719-pinboard-lightbox"></script>
+  <script src="js/core/api.js?v=20260725-onboarding"></script>
+  <script src="js/core/app.js?v=20260727-copy-review"></script>
   <!-- 页面渲染函数，defer 不阻塞 -->
-  <script src="js/pages/auth.js?v=20260715-ui2" defer></script>
-  <script src="js/pages/game.js?v=20260719-board-copy" defer></script>
-  <script src="js/pages/write-letter.js?v=20260719-layout-polish" defer></script>
-  <script src="js/pages/postcards.js?v=20260719-search-ime" defer></script>
-  <script src="js/pages/discover.js?v=20260715-ui2" defer></script>
-  <script src="js/pages/mailbox.js?v=20260719-mail-memory" defer></script>
-  <script src="js/pages/memories.js?v=20260719-layout-polish" defer></script>
-  <script src="js/pages/settings.js?v=20260719-layout-polish3" defer></script>
-  <script src="js/ui/workbench.js?v=20260719-letter-draft2" defer></script>
+  <script src="js/pages/auth.js?v=20260727-copy-review" defer></script>
+  <script src="js/pages/game.js?v=20260727-copy-review" defer></script>
+  <script src="js/pages/write-letter.js?v=20260727-copy-review" defer></script>
+  <script src="js/pages/postcards.js?v=20260727-copy-review" defer></script>
+  <script src="js/pages/discover.js?v=20260727-copy-review" defer></script>
+  <script src="js/pages/mailbox.js?v=20260727-copy-review" defer></script>
+  <script src="js/pages/memories.js?v=20260727-copy-review" defer></script>
+  <script src="js/pages/settings.js?v=20260727-copy-review" defer></script>
+  <script src="js/ui/workbench.js?v=20260727-copy-review" defer></script>
+  <script src="js/ui/onboarding.js?v=20260727-copy-review" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       if (Auth.isLoggedIn()) {

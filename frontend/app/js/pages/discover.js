@@ -19,7 +19,7 @@ function renderDiscover() {
         </div>
         <button class="text-button" onclick="renderDiscover()">↻ 换一批</button>
       </div>
-      <p class="discover-desc">看看其他人写给过去的信。喜欢就点亮它，它会落在你的桌面上。</p>
+      <p class="discover-desc">浏览其他用户公开的来信，并收藏你想保留的内容。</p>
       <div class="discover-grid" id="discover-list">
         ${Array.from({length:6}, () => `
           <div class="discover-card-skel">
@@ -39,11 +39,11 @@ async function _loadDiscoverFeed(requestId = _discRequest) {
   try {
     const r = await api.getCommunityFeed(12);
     if (requestId !== _discRequest) return;
-    if (!r.ok || !r.data) { if (listEl) listEl.innerHTML = '<div class="visual-empty"><div><p>暂时没有远方的来信。</p></div></div>'; return; }
+    if (!r.ok || !r.data) { if (listEl) listEl.innerHTML = '<div class="visual-empty"><div><p>暂时没有公开来信。</p></div></div>'; return; }
     _discoverItems = (r.data.items || []).map(item => App.normalizeCommunityItem(item));
     if (listEl) _renderDiscoverList(listEl);
   } catch (e) {
-    if (requestId === _discRequest && listEl) listEl.innerHTML = '<div class="visual-empty"><div><p>网络不好，再试一次吧。</p><button class="btn btn-sec" onclick="renderDiscover()">再试一次</button></div></div>';
+    if (requestId === _discRequest && listEl) listEl.innerHTML = '<div class="visual-empty"><div><p>加载失败，请检查网络后重试。</p><button class="btn btn-sec" onclick="renderDiscover()">重新加载</button></div></div>';
   } finally {
   }
 }
@@ -51,16 +51,13 @@ async function _loadDiscoverFeed(requestId = _discRequest) {
 function _renderDiscoverList(container) {
   const items = _discoverItems;
   if (!items.length) {
-    container.innerHTML = '<div class="visual-empty"><div><p>暂时没有远方的来信。</p></div></div>';
+    container.innerHTML = '<div class="visual-empty"><div><p>暂时没有公开来信。</p></div></div>';
     return;
   }
 
   const dateFmt = (ts) => {
     if (!ts) return '';
-    const d = new Date(ts), now = new Date(), diff = now - d;
-    if (diff < 86400000) return '今天';
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`;
-    return d.toLocaleDateString('zh-CN');
+    return App.relativeTime(ts);
   };
 
   // 先存引用，再渲染，确保 onclick 能取到
@@ -80,7 +77,7 @@ function _renderDiscoverList(container) {
           <div class="disc-card-top">
             <span class="disc-avatar">${(item.author?.username || '?')[0]}</span>
             <div class="disc-card-by">
-              <strong>${App._e(item.author?.username || '远方来信')}</strong>
+              <strong>${App._e(item.author?.username || '未知用户')}</strong>
               <small>${App._e(item.author?.hometown || '')} · ${dateFmt(item.timestamp)}</small>
             </div>
           </div>
@@ -114,7 +111,7 @@ async function _toggleLike(index) {
         item.liked = false;
         _updateLikeBtn(index, false);
         App.state.likedItems = (App.state.likedItems || []).filter(saved => saved.id !== item.id);
-        App.showToast('已从桌面取下');
+        App.showToast('已取消收藏');
       }
     } else {
       const r = await api.likeCommunityLetter(letterId);
@@ -122,10 +119,10 @@ async function _toggleLike(index) {
         item.liked = true;
         _updateLikeBtn(index, true);
         App.state.likedItems = [item, ...(App.state.likedItems || []).filter(saved => saved.id !== item.id)];
-        App.showToast('已收藏到桌面 ✨');
+        App.showToast('已收藏');
       }
     }
-  } catch (e) { App.showToast('操作失败', 2000); }
+  } catch (e) { App.showToast(App.friendlyError(e, '收藏失败，请稍后重试'), 3000); }
   if (btn) btn.disabled = false;
 }
 

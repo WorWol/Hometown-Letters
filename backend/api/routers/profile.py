@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,8 +54,27 @@ async def set_image_style(body: ImageStyleReq, user: User = Depends(get_current_
     if profile is None:
         profile = Profile(user_id=user.id, data={})
         db.add(profile)
-    if not isinstance(profile.data, dict):
-        profile.data = {}
-    profile.data["image_style"] = body.style_id
+    current_data = profile.data if isinstance(profile.data, dict) else {}
+    profile.data = {**current_data, "image_style": body.style_id}
     await db.flush()
     return {"ok": True, "data": {"imageStyle": body.style_id}}
+
+
+class OnboardingReq(BaseModel):
+    version: int = Field(ge=1, le=1000)
+
+
+@router.post("/profile/onboarding")
+async def set_onboarding_version(
+    body: OnboardingReq,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = await db.scalar(select(Profile).where(Profile.user_id == user.id))
+    if profile is None:
+        profile = Profile(user_id=user.id, data={})
+        db.add(profile)
+    current_data = profile.data if isinstance(profile.data, dict) else {}
+    profile.data = {**current_data, "onboarding_version": body.version}
+    await db.flush()
+    return {"ok": True, "data": {"onboardingVersion": body.version}}
