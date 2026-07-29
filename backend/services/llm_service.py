@@ -17,20 +17,19 @@ class LlmService:
     def __init__(self, api_key: str | None = None):
         api_key = api_key or settings.volc_api_key
         proxy = settings.get_proxy_for("volc")
-        http_client = None
-        async_http_client = None
+        # 始终 trust_env=False：不走 macOS 系统代理，直连火山 API（系统代理可能连不上）
+        client_kwargs: dict = {"timeout": settings.llm_timeout, "trust_env": False}
         if proxy:
-            http_client = httpx.Client(proxy=proxy, timeout=settings.llm_timeout)
-            async_http_client = httpx.AsyncClient(proxy=proxy, timeout=settings.llm_timeout)
+            client_kwargs["proxy"] = proxy
         self.client = OpenAI(
             api_key=api_key,
             base_url=settings.volc_base_url,
-            http_client=http_client,
+            http_client=httpx.Client(**client_kwargs),
         )
         self.async_client = AsyncOpenAI(
             api_key=api_key,
             base_url=settings.volc_base_url,
-            http_client=async_http_client,
+            http_client=httpx.AsyncClient(**client_kwargs),
         )
         self.model = settings.volc_llm_model
 

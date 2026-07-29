@@ -117,7 +117,7 @@ class Settings:
         default_factory=lambda: _env("OSS_ASSET_PREFIX", "assets")
     )
     oss_url_expire_seconds: int = field(
-        default_factory=lambda: int(_env("OSS_URL_EXPIRE_SECONDS", "900"))
+        default_factory=lambda: int(_env("OSS_URL_EXPIRE_SECONDS", "86400"))
     )
 
     # ── 运行配置 ──

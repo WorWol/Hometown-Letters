@@ -44,7 +44,8 @@ class SearchService:
         proxy = settings.get_proxy_for("serper")
         try:
             async with httpx.AsyncClient(proxy=proxy,
-                                         timeout=settings.search_timeout) as client:
+                                         timeout=settings.search_timeout,
+                                         trust_env=False) as client:
                 resp = await client.post(url, headers=headers, json=payload)
                 resp.raise_for_status()
                 return resp.json()

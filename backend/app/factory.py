@@ -71,11 +71,32 @@ def create_app() -> FastAPI:
     frontend_dir = Path(__file__).resolve().parents[1] / ".." / "frontend"
     media_dir = Path(__file__).resolve().parents[1] / "generated_images"
 
+    _asset_cache: dict[str, tuple[bytes, str]] = {}
+
     @app.get("/assets/{asset_path:path}", include_in_schema=False)
     async def serve_frontend_asset(asset_path: str):
         if settings.storage_backend.lower() == "oss":
+            # OSS 模式：后端代理下载（绕过浏览器系统代理连不上 OSS 的问题）+ 内存缓存
+            if asset_path in _asset_cache:
+                content, content_type = _asset_cache[asset_path]
+                response = Response(content, media_type=content_type)
+                response.headers["Cache-Control"] = "public, max-age=86400"
+                return response
             from storage import asset_url
-            return RedirectResponse(asset_url(asset_path), status_code=307)
+            import httpx
+            url = asset_url(asset_path)
+            try:
+                async with httpx.AsyncClient(trust_env=False, timeout=30) as client:
+                    resp = await client.get(url, follow_redirects=True)
+                    if resp.status_code == 200:
+                        content_type = resp.headers.get("content-type", "image/png")
+                        _asset_cache[asset_path] = (resp.content, content_type)
+                        response = Response(resp.content, media_type=content_type)
+                        response.headers["Cache-Control"] = "public, max-age=86400"
+                        return response
+            except Exception:
+                pass
+            return Response(status_code=502)
         assets_root = (frontend_dir / "app" / "assets").resolve()
         local_path = (assets_root / asset_path).resolve()
         if assets_root not in local_path.parents or not local_path.is_file():
@@ -91,7 +112,36 @@ def create_app() -> FastAPI:
     async def _legacy_admin_login_entry():
         return RedirectResponse("/admin/admin-login.html")
 
-    if media_dir.is_dir():
+    if settings.storage_backend.lower() == "oss":
+        # OSS 模式：/media 代理 OSS（绕过浏览器系统代理 + 签名过期）+ 内存缓存
+        _media_cache: dict[str, tuple[bytes, str]] = {}
+
+        @app.get("/media/{object_key:path}", include_in_schema=False)
+        async def serve_media(object_key: str):
+            if object_key in _media_cache:
+                content, content_type = _media_cache[object_key]
+                response = Response(content, media_type=content_type)
+                response.headers["Cache-Control"] = "public, max-age=86400"
+                return response
+            from storage import _bucket
+            import httpx
+            bucket = _bucket("public")
+            if not bucket:
+                return Response(status_code=502)
+            url = bucket.sign_url("GET", object_key, settings.oss_url_expire_seconds)
+            try:
+                async with httpx.AsyncClient(trust_env=False, timeout=30) as client:
+                    resp = await client.get(url, follow_redirects=True)
+                    if resp.status_code == 200:
+                        content_type = resp.headers.get("content-type", "image/webp")
+                        _media_cache[object_key] = (resp.content, content_type)
+                        response = Response(resp.content, media_type=content_type)
+                        response.headers["Cache-Control"] = "public, max-age=86400"
+                        return response
+            except Exception:
+                pass
+            return Response(status_code=502)
+    elif media_dir.is_dir():
         app.mount("/media", StaticFiles(directory=media_dir), name="media")
     admin_dir = frontend_dir / "admin"
     app_dir = frontend_dir / "app"

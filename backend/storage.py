@@ -182,9 +182,7 @@ def image_url(object_key: str) -> str:
         return ""
     if object_key.startswith(("http://", "https://", "data:", "blob:")):
         return object_key
-    bucket = _bucket("public")
-    if bucket:
-        return bucket.sign_url("GET", object_key, settings.oss_url_expire_seconds)
+    # 统一走 /media 路由（后端代理 OSS 或本地文件），避免浏览器直接访问 OSS 签名 URL
     return f"/media/{object_key}"
 
 

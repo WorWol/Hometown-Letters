@@ -57,9 +57,7 @@ class ImageService:
         if _HAS_SDK:
             # SDK 模式也通过 httpx 代理
             proxy = settings.get_proxy_for("volc")
-            http_client = None
-            if proxy:
-                http_client = httpx.Client(proxy=proxy)
+            http_client = httpx.Client(proxy=proxy, trust_env=False)
             self.client = _Ark(
                 base_url=settings.volc_base_url,
                 api_key=settings.volc_api_key,
@@ -75,6 +73,7 @@ class ImageService:
             self._http_client = httpx.AsyncClient(
                 proxy=proxy,
                 timeout=settings.image_gen_timeout,
+                trust_env=False,
                 limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
             )
         return self._http_client
@@ -222,7 +221,8 @@ class ImageService:
         proxy = settings.get_proxy_for("serper")
         try:
             async with httpx.AsyncClient(proxy=proxy,
-                                         timeout=settings.download_timeout) as client:
+                                         timeout=settings.download_timeout,
+                                         trust_env=False) as client:
                 resp = await client.get(url, headers=headers)
                 resp.raise_for_status()
                 return resp.content
